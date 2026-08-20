@@ -8,9 +8,9 @@ import {
   seasonTitleVariants,
   yearMatches,
 } from '../src/cr/match.js'
-import { rewriteManifest } from '../src/cr/proxy.js'
+import { keepHighestVideo, rewriteManifest } from '../src/cr/proxy.js'
 import type { PlaySession } from '../src/cr/play.js'
-import { crHeaders, isCrunchyrollHost, mediaHeaders } from '../src/cr/headers.js'
+import { cdnHeaders, crHeaders, isCdnUrl, isCrunchyrollHost, mediaHeaders } from '../src/cr/headers.js'
 
 test('seasonFromTitle reads common anime season labels', () => {
   assert.equal(seasonFromTitle('My Hero Academia 2nd Season'), 2)
@@ -89,6 +89,7 @@ test('manifest rewrite points BaseURL at a path-prefix CDN proxy', () => {
     manifestUrl: 'https://www.crunchyroll.com/playback/v2/manifest/x',
     videoContainer: 'dash',
     headers: {},
+    cdnHeaders: {},
     subtitles: [],
     captions: [],
     createdAt: 0,
@@ -97,4 +98,29 @@ test('manifest rewrite points BaseURL at a path-prefix CDN proxy', () => {
   const out = rewriteManifest(xml, 'http://127.0.0.1:17871', session)
   assert.equal(out, '<MPD><BaseURL>http://127.0.0.1:17871/v/sess/cdn/</BaseURL></MPD>')
   assert.equal(session.cdnBase, 'https://vod.crunchyrollcdn.com/a/')
+})
+
+test('CDN headers always send Referer and never Authorization', () => {
+  const tv = cdnHeaders('tv')
+  const web = cdnHeaders('web')
+  assert.equal(tv.Referer, 'https://www.crunchyroll.com/')
+  assert.equal(tv.Origin, 'https://www.crunchyroll.com')
+  assert.equal(tv.Authorization, undefined)
+  assert.equal(web.Authorization, undefined)
+  assert.equal(tv['Accept-Encoding'], 'identity')
+  assert.equal(isCdnUrl('https://vod-cf-us-west-2.crunchyrollcdn.com/x'), true)
+  assert.equal(isCdnUrl('https://beta-api.crunchyroll.com/x'), false)
+})
+
+test('keepHighestVideo drops lower rungs so the proxy does not ABR down', () => {
+  const xml = `
+    <AdaptationSet>
+      <Representation id="v240" height="240" bandwidth="1"></Representation>
+      <Representation id="v1080" height="1080" bandwidth="8"></Representation>
+      <Representation id="audio" bandwidth="2"></Representation>
+    </AdaptationSet>`
+  const out = keepHighestVideo(xml)
+  assert.match(out, /v1080/)
+  assert.doesNotMatch(out, /v240/)
+  assert.match(out, /audio/)
 })

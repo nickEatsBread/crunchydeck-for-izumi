@@ -1,6 +1,6 @@
 import { HOSTS, PLAY_PLATFORM } from './constants.js'
 import { CrError } from './errors.js'
-import { crHeaders, mediaHeaders } from './headers.js'
+import { cdnHeaders, crHeaders, isCdnUrl, mediaHeaders } from './headers.js'
 import { jsonOrThrow, type CrTransport } from './http.js'
 import type { Auth } from './auth.js'
 import { loadSession, saveSession } from '../storage.js'
@@ -24,6 +24,7 @@ export interface PlaySession {
   drmUrl?: string
   audioLocale?: string
   headers: Record<string, string>
+  cdnHeaders: Record<string, string>
   subtitles: SubtitleTrack[]
   captions: SubtitleTrack[]
   createdAt: number
@@ -137,6 +138,7 @@ export class PlayService {
       drmUrl: json.drm?.drmUrl,
       audioLocale: json.audioLocale,
       headers: mediaHeaders(profile, token),
+      cdnHeaders: cdnHeaders(profile),
       subtitles: tracks(json.subtitles, 'en-US'),
       captions: tracks(json.captions, 'en-US'),
       createdAt: Date.now(),
@@ -149,7 +151,7 @@ export class PlayService {
   async fetchManifest(session: PlaySession): Promise<{ contentType: string; body: string }> {
     const res = await this.transport.request({
       url: session.manifestUrl,
-      headers: session.headers,
+      headers: isCdnUrl(session.manifestUrl) ? session.cdnHeaders : session.headers,
     })
     if (res.status >= 400) throw new CrError(res.status, res.text, `manifest HTTP ${res.status}`)
     return {
@@ -158,15 +160,25 @@ export class PlayService {
     }
   }
 
-  async fetchBinary(session: PlaySession, url: string): Promise<{ contentType: string; body: Buffer; status: number }> {
-    const res = await this.transport.request({
-      url,
-      headers: session.headers,
-    })
+  async fetchBinary(
+    session: PlaySession,
+    url: string,
+    extra?: Record<string, string>,
+  ): Promise<{ contentType: string; body: Buffer; status: number; headers: Record<string, string> }> {
+    const headers = {
+      ...(isCdnUrl(url) ? session.cdnHeaders : session.headers),
+      ...extra,
+    }
+    const res = await this.transport.request({ url, headers })
+    const contentType = res.headers['content-type'] ?? 'application/octet-stream'
+    if (res.status >= 400) {
+      console.warn(`[cdn] ${res.status} ${contentType} ${url.split('?')[0]?.slice(-80)}`)
+    }
     return {
       status: res.status,
-      contentType: res.headers['content-type'] ?? 'application/octet-stream',
+      contentType,
       body: res.body,
+      headers: res.headers,
     }
   }
 
@@ -219,6 +231,7 @@ export class PlayService {
         manifestUrl: '',
         videoContainer: 'dash',
         headers: {},
+        cdnHeaders: {},
         subtitles: [],
         captions: [],
         createdAt: 0,

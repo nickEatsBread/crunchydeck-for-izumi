@@ -17,7 +17,8 @@ export function rewriteManifest(xml: string, proxyBase: string, session: PlaySes
     session.cdnBase = cdnBase.endsWith('/') ? cdnBase : `${cdnBase}/`
   }
   const cdnProxy = `${proxyBase}/v/${session.id}/cdn/`
-  let out = xml.replace(BASE_URL, `<BaseURL>${cdnProxy}</BaseURL>`)
+  let out = keepHighestVideo(xml)
+  out = out.replace(BASE_URL, `<BaseURL>${cdnProxy}</BaseURL>`)
   out = out.replace(ABSOLUTE_URL, (match) => {
     if (match.includes('/v/')) return match
     if (session.cdnBase && match.startsWith(session.cdnBase.replace(/\/$/, ''))) {
@@ -26,6 +27,18 @@ export function rewriteManifest(xml: string, proxyBase: string, session: PlaySes
     return `${proxyBase}/v/${session.id}/asset?u=${encodeURIComponent(match)}`
   })
   return out
+}
+
+/** Keep the tallest video Representation so mpv does not ABR-down through the local proxy. */
+export function keepHighestVideo(xml: string): string {
+  const heights = [...xml.matchAll(/\bheight="(\d+)"/g)].map((match) => Number(match[1]))
+  const max = Math.max(0, ...heights)
+  if (!max) return xml
+  return xml.replace(/<Representation\b[\s\S]*?<\/Representation>/g, (block) => {
+    const height = block.match(/\bheight="(\d+)"/)
+    if (!height) return block
+    return Number(height[1]) === max ? block : ''
+  })
 }
 
 export function resolveCdnUrl(session: PlaySession, restPath: string, search: string): string | undefined {

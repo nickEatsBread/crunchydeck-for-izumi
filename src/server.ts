@@ -29,6 +29,22 @@ function send(res: ServerResponse, status: number, body: unknown, type = 'applic
   res.end(payload)
 }
 
+function sendMedia(res: ServerResponse, fetched: { status: number; contentType: string; body: Buffer; headers: Record<string, string> }): void {
+  const magic = fetched.body.subarray(4, 8).toString('ascii')
+  const isMp4 = magic === 'ftyp' || magic === 'moof' || magic === 'styp' || magic === 'mdat'
+  const type = isMp4 ? (fetched.contentType.includes('mp4') ? fetched.contentType : 'video/mp4') : fetched.contentType
+  const headers: Record<string, string> = {
+    'content-type': type,
+    'cache-control': 'no-store',
+    'access-control-allow-origin': '*',
+    'content-length': String(fetched.body.length),
+  }
+  if (fetched.headers['content-range']) headers['content-range'] = fetched.headers['content-range']
+  if (fetched.headers['accept-ranges']) headers['accept-ranges'] = fetched.headers['accept-ranges']
+  res.writeHead(fetched.status, headers)
+  res.end(fetched.body)
+}
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
@@ -179,8 +195,9 @@ async function handle(app: CrunchyrollApp, req: IncomingMessage, res: ServerResp
         send(res, 404, { error: 'unknown asset' })
         return
       }
-      const fetched = await app.play.fetchBinary(session, target)
-      send(res, fetched.status, fetched.body, fetched.contentType)
+      const range = typeof req.headers.range === 'string' ? { Range: req.headers.range } : undefined
+      const fetched = await app.play.fetchBinary(session, target, range)
+      sendMedia(res, fetched)
       return
     }
     const cdn = url.pathname.match(/^\/v\/([^/]+)\/cdn\/(.*)$/)
@@ -191,8 +208,9 @@ async function handle(app: CrunchyrollApp, req: IncomingMessage, res: ServerResp
         send(res, 404, { error: 'unknown cdn asset' })
         return
       }
-      const fetched = await app.play.fetchBinary(session, target)
-      send(res, fetched.status, fetched.body, fetched.contentType)
+      const range = typeof req.headers.range === 'string' ? { Range: req.headers.range } : undefined
+      const fetched = await app.play.fetchBinary(session, target, range)
+      sendMedia(res, fetched)
       return
     }
     const relative = url.pathname.match(/^\/v\/([^/]+)\/(.+)$/)
@@ -203,8 +221,9 @@ async function handle(app: CrunchyrollApp, req: IncomingMessage, res: ServerResp
         send(res, 404, { error: 'unknown session asset' })
         return
       }
-      const fetched = await app.play.fetchBinary(session, target)
-      send(res, fetched.status, fetched.body, fetched.contentType)
+      const range = typeof req.headers.range === 'string' ? { Range: req.headers.range } : undefined
+      const fetched = await app.play.fetchBinary(session, target, range)
+      sendMedia(res, fetched)
       return
     }
     send(res, 404, { error: 'not found' })

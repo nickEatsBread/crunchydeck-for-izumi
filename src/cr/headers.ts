@@ -75,7 +75,6 @@ export function mediaHeaders(profile: ClientProfile, accessToken?: string): Reco
     referer: `${HOSTS.www}/`,
     extra: { Accept: '*/*' },
   })
-  // CDN hosts reject some Chrome Client Hints; keep Origin/Referer/UA/Authorization.
   delete headers['sec-ch-ua']
   delete headers['sec-ch-ua-mobile']
   delete headers['sec-ch-ua-platform']
@@ -83,6 +82,28 @@ export function mediaHeaders(profile: ClientProfile, accessToken?: string): Reco
   delete headers['sec-fetch-mode']
   delete headers['sec-fetch-site']
   return headers
+}
+
+/** CloudFront signed media. Referer is required; Authorization/Bearer must NOT be sent. */
+export function cdnHeaders(profile: ClientProfile): Record<string, string> {
+  const headers: Record<string, string> = {
+    'User-Agent': profile === 'tv' ? TIZEN_UA : CHROME_UA,
+    Accept: '*/*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'identity',
+    Origin: HOSTS.www,
+    Referer: `${HOSTS.www}/`,
+  }
+  return headers
+}
+
+export function isCdnUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase()
+    return host.endsWith('.crunchyrollcdn.com') || host.endsWith('.vrv.co') || host.endsWith('.akamaized.net')
+  } catch {
+    return false
+  }
 }
 
 /** True when this host should be fetched with the spoofed CR client, not Node defaults. */
