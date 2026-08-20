@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Crunchyroll source for Izumi</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d0d0f;
+      --card: #17171c;
+      --ink: #f4f1ea;
+      --muted: #a39e93;
+      --accent: #f47521;
+      --line: #2a2a31;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 16px/1.45 ui-sans-serif, system-ui, sans-serif;
+      background: radial-gradient(1200px 500px at 10% -10%, #2a160c 0%, var(--bg) 55%);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main { max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; }
+    h1 { font-size: 1.6rem; margin: 0 0 8px; }
+    p.lead { color: var(--muted); margin-top: 0; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 20px;
+      margin: 16px 0;
+    }
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin: 12px 0 6px; }
+    input, textarea {
+      width: 100%;
+      background: #101014;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+    }
+    textarea { min-height: 72px; font-family: ui-monospace, monospace; }
+    button {
+      background: var(--accent);
+      color: #1a0d05;
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 16px;
+      font-weight: 700;
+      cursor: pointer;
+      margin: 12px 8px 0 0;
+    }
+    button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+    .status { font-size: 0.95rem; }
+    .ok { color: #8ee0a8; }
+    .err { color: #ff8d8d; }
+    code { background: #101014; padding: 2px 6px; border-radius: 6px; }
+    ol { color: var(--muted); }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .row > * { flex: 1; min-width: 200px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Crunchyroll source</h1>
+    <p class="lead">Sign in with your Crunchyroll account, then add this source in Izumi. Izumi is not modified.</p>
+
+    <section class="card">
+      <div id="status" class="status">Checking session…</div>
+    </section>
+
+    <section class="card">
+      <h2>Add in Izumi</h2>
+      <ol>
+        <li>Keep this server running.</li>
+        <li>In Izumi go to Settings → Sources / Extensions.</li>
+        <li>Paste <code id="manifest">http://127.0.0.1:17871/index.json</code></li>
+      </ol>
+    </section>
+
+    <section class="card">
+      <h2>Browser cookie (<code>etp_rt</code>)</h2>
+      <p class="lead">Paste the <code>etp_rt</code> cookie from crunchyroll.com. This is the web session grant.</p>
+      <label for="etp">etp_rt</label>
+      <textarea id="etp" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></textarea>
+      <button id="etpBtn">Sign in with cookie</button>
+    </section>
+
+    <section class="card">
+      <h2>Email and password (TV client)</h2>
+      <p class="lead">Uses the Samsung TV OAuth client from the Tizen app. Crunchyroll may reject password grant on some accounts.</p>
+      <div class="row">
+        <div>
+          <label for="user">Email</label>
+          <input id="user" type="email" autocomplete="username" />
+        </div>
+        <div>
+          <label for="pass">Password</label>
+          <input id="pass" type="password" autocomplete="current-password" />
+        </div>
+      </div>
+      <button id="passBtn">Sign in with password</button>
+    </section>
+
+    <section class="card">
+      <h2>TV device code</h2>
+      <p class="lead">Opens the official activate flow. Pair at <code>crunchyroll.com/activate</code>.</p>
+      <button id="deviceBtn">Get a device code</button>
+      <p id="device" class="status"></p>
+    </section>
+
+    <button class="secondary" id="logoutBtn">Sign out</button>
+    <p id="msg" class="status"></p>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id)
+    const msg = (text, cls) => { const el = $('msg'); el.className = 'status ' + (cls || ''); el.textContent = text }
+
+    async function j(path, body, method) {
+      const res = await fetch(path, {
+        method: method || (body ? 'POST' : 'GET'),
+        headers: body ? { 'content-type': 'application/json' } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || data.message || res.statusText)
+      return data
+    }
+
+    async function refreshStatus() {
+      const s = await j('/api/status')
+      $('manifest').textContent = s.manifestUrl || location.origin + '/index.json'
+      const el = $('status')
+      if (s.authenticated) {
+        el.className = 'status ok'
+        el.textContent = 'Signed in as ' + (s.accountId || 'account') +
+          (s.country ? ' · ' + s.country : '') +
+          ' · ' + s.profile + ' client · ' + s.transport + ' transport'
+      } else {
+        el.className = 'status'
+        el.textContent = 'Not signed in. Crunchyroll requires your own account.'
+      }
+    }
+
+    $('etpBtn').onclick = async () => {
+      try { await j('/api/login/etp', { etpRt: $('etp').value }); msg('Signed in with etp_rt', 'ok'); await refreshStatus() }
+      catch (e) { msg(e.message, 'err') }
+    }
+    $('passBtn').onclick = async () => {
+      try { await j('/api/login/password', { username: $('user').value, password: $('pass').value }); msg('Signed in with password', 'ok'); await refreshStatus() }
+      catch (e) { msg(e.message, 'err') }
+    }
+    $('logoutBtn').onclick = async () => {
+      try { await j('/api/logout', {}, 'POST'); msg('Signed out', 'ok'); await refreshStatus() }
+      catch (e) { msg(e.message, 'err') }
+    }
+    $('deviceBtn').onclick = async () => {
+      try {
+        const code = await j('/api/login/device', {})
+        $('device').textContent = 'Go to ' + code.verificationUri + ' and enter ' + code.userCode
+        const timer = setInterval(async () => {
+          try {
+            const poll = await j('/api/login/device/poll', { deviceCode: code.deviceCode })
+            if (!poll.pending) {
+              clearInterval(timer)
+              msg('TV device linked', 'ok')
+              await refreshStatus()
+            }
+          } catch (e) {
+            clearInterval(timer)
+            msg(e.message, 'err')
+          }
+        }, Math.max(3, code.interval || 5) * 1000)
+      } catch (e) { msg(e.message, 'err') }
+    }
+    refreshStatus().catch((e) => { $('status').textContent = e.message; $('status').className = 'status err' })
+  </script>
+</body>
+</html>
