@@ -6,6 +6,7 @@ import {
   mapDeviceCodeResponse,
   normalizeIntervalMs,
 } from '../src/cr/device.js'
+import { usesChromiumPage } from '../src/cr/chrome.js'
 
 test('polling_interval from the Tizen client is milliseconds, not seconds', () => {
   assert.equal(normalizeIntervalMs(5000), 5000)
@@ -43,4 +44,10 @@ test('authorization_pending and other 4xx stay pending so polling continues', ()
 test('invalid_grant is detected in CR oauth errors', () => {
   assert.equal(isInvalidGrant(new Error('Crunchyroll HTTP 400: {"error":"invalid_grant"}')), true)
   assert.equal(isInvalidGrant(new Error('nope')), false)
+})
+
+test('chromium page fetch is only used for www.crunchyroll.com, not beta-api', () => {
+  assert.equal(usesChromiumPage('https://www.crunchyroll.com/auth/v1/token'), true)
+  assert.equal(usesChromiumPage('https://beta-api.crunchyroll.com/content/v2/discover/search?q=x'), false)
+  assert.equal(usesChromiumPage('https://cr-play-service.prd.crunchyrollsvc.com/v1/x'), false)
 })

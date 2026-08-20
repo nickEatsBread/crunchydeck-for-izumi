@@ -1,7 +1,17 @@
 import { existsSync } from 'node:fs'
 import puppeteer, { type Browser, type Page } from 'puppeteer-core'
 import { CHROME_UA, HOSTS, TIZEN_UA, type ClientProfile } from './constants.js'
-import { makeResponse, type CrRequest, type CrResponse, type CrTransport } from './http.js'
+import { FetchTransport, makeResponse, type CrRequest, type CrResponse, type CrTransport } from './http.js'
+
+/** Page-evaluate fetch is same-origin to www.crunchyroll.com. beta-api / play / CDN are CORS and throw "Failed to fetch". */
+export function usesChromiumPage(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase()
+    return host === 'www.crunchyroll.com' || host === 'crunchyroll.com'
+  } catch {
+    return false
+  }
+}
 
 const CHROME_CANDIDATES = [
   process.env.CHROME_PATH,
@@ -43,6 +53,7 @@ export class ChromeTransport implements CrTransport {
   private page: Page | null = null
   private profile: ClientProfile = 'web'
   private launching: Promise<void> | null = null
+  private readonly node = new FetchTransport()
 
   constructor(private readonly executablePath: string) {}
 
@@ -52,6 +63,17 @@ export class ChromeTransport implements CrTransport {
   }
 
   async request(req: CrRequest): Promise<CrResponse> {
+    if (!usesChromiumPage(req.url)) return this.node.request(req)
+    try {
+      return await this.pageFetch(req)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.warn('[cr] chrome page fetch failed, using node:', message.slice(0, 160))
+      return this.node.request(req)
+    }
+  }
+
+  private async pageFetch(req: CrRequest): Promise<CrResponse> {
     await this.ensurePage()
     const page = this.page
     if (!page) throw new Error('chrome transport has no page')

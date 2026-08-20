@@ -78,6 +78,7 @@ export class Catalog {
     const url =
       `${apiBase(profile)}/content/v2/discover/search?q=${encodeURIComponent(q)}` +
       `&n=20&start=0&type=series,movie_listing&locale=${DEFAULT_LOCALE}`
+    console.log(`[cr] search ${profile} ${url}`)
     const json = await jsonOrThrow<{ data?: Array<{ type?: string; items?: SeriesItem[] }> }>(
       await this.transport.request({
         url,
