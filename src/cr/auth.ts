@@ -6,9 +6,10 @@ import {
   WEB_CLIENT_BASIC,
   type ClientProfile,
 } from './constants.js'
-import { CrError, errorCode } from './errors.js'
+import { interpretDeviceToken, isInvalidGrant, mapDeviceCodeResponse } from './device.js'
+import { CrError } from './errors.js'
 import { crHeaders } from './headers.js'
-import { jsonOrThrow, type CrTransport } from './http.js'
+import { jsonOrThrow, type CrResponse, type CrTransport } from './http.js'
 import { loadSession, saveSession, type SessionFile } from '../storage.js'
 
 export interface TokenSet {
@@ -47,8 +48,21 @@ export interface DeviceCode {
   deviceCode: string
   userCode: string
   verificationUri: string
+  verificationUriComplete: string
   expiresIn: number
-  interval: number
+  intervalMs: number
+}
+
+export type DeviceFlowStatus = 'idle' | 'waiting' | 'ok' | 'expired' | 'error'
+
+export interface DeviceFlowState {
+  status: DeviceFlowStatus
+  userCode?: string
+  verificationUri?: string
+  verificationUriComplete?: string
+  expiresAt?: number
+  error?: string
+  authenticated?: AccountStatus
 }
 
 function form(body: Record<string, string>): string {
@@ -79,6 +93,10 @@ export class Auth {
   private inflight: Promise<string> | null = null
   private loginKind: AccountStatus['login'] = 'none'
   private session: SessionFile
+  private deviceFlow: DeviceFlowState = { status: 'idle' }
+  private devicePollTimer: ReturnType<typeof setTimeout> | null = null
+  private deviceCode: string | null = null
+  private deviceIntervalMs = 3000
 
   constructor(
     private transport: CrTransport,
@@ -101,7 +119,7 @@ export class Auth {
       }
     }
     if (this.session.etpRt) this.loginKind = 'etp_rt'
-    else if (this.session.refreshToken) this.loginKind = 'password'
+    else if (this.session.refreshToken) this.loginKind = this.session.profile === 'tv' ? 'device' : 'password'
   }
 
   get profile(): ClientProfile {
@@ -116,9 +134,14 @@ export class Auth {
     return this.transport.name
   }
 
+  shutdown(): void {
+    this.stopDevicePoll()
+  }
+
   status(): AccountStatus {
+    const canRefresh = !!this.session.etpRt || !!this.session.refreshToken
     return {
-      authenticated: !!this.tokens || !!this.session.etpRt || !!this.session.refreshToken,
+      authenticated: !!this.tokens || canRefresh,
       profile: this.session.profile,
       accountId: this.session.accountId ?? this.tokens?.accountId,
       profileId: this.session.profileId ?? this.tokens?.profileId,
@@ -129,11 +152,17 @@ export class Auth {
     }
   }
 
+  deviceStatus(): DeviceFlowState {
+    return { ...this.deviceFlow, authenticated: this.deviceFlow.status === 'ok' ? this.status() : undefined }
+  }
+
   logout(): void {
+    this.stopDevicePoll()
     this.tokens = null
     this.loginKind = 'none'
+    this.deviceFlow = { status: 'idle' }
     this.session = {
-      profile: this.session.profile,
+      profile: 'web',
       deviceId: this.session.deviceId,
     }
     saveSession(this.session)
@@ -155,7 +184,7 @@ export class Auth {
     this.session.profile = 'tv'
     this.session.etpRt = undefined
     this.loginKind = 'password'
-    const json = await this.tokenRequest({
+    const json = await this.tokenRequest('tv', {
       username,
       password,
       grant_type: 'password',
@@ -164,21 +193,13 @@ export class Auth {
       device_type: DEVICE.tv.type,
       device_name: DEVICE.tv.name,
     })
-    this.adopt(json)
+    this.adopt(json, 'tv')
     return this.status()
   }
 
   async requestDeviceCode(): Promise<DeviceCode> {
-    this.session.profile = 'tv'
-    const json = await jsonOrThrow<{
-      device_code: string
-      user_code: string
-      verification_uri?: string
-      verification_uri_complete?: string
-      expires_in?: number
-      polling_interval?: number
-      interval?: number
-    }>(
+    this.stopDevicePoll()
+    const json = await jsonOrThrow<Record<string, unknown>>(
       await this.transport.request({
         url: `${HOSTS.api}/auth/v1/device/code`,
         method: 'POST',
@@ -194,37 +215,35 @@ export class Auth {
         }),
       }),
     )
-    return {
-      deviceCode: json.device_code,
-      userCode: json.user_code,
-      verificationUri: json.verification_uri_complete || json.verification_uri || 'https://www.crunchyroll.com/activate',
-      expiresIn: json.expires_in ?? 300,
-      interval: json.polling_interval ?? json.interval ?? 5,
+    const mapped = mapDeviceCodeResponse(json ?? {})
+    if (!mapped.deviceCode || !mapped.userCode) {
+      throw new Error('Crunchyroll did not return a device code')
     }
+    this.deviceCode = mapped.deviceCode
+    this.deviceIntervalMs = mapped.intervalMs
+    this.deviceFlow = {
+      status: 'waiting',
+      userCode: mapped.userCode,
+      verificationUri: mapped.verificationUri,
+      verificationUriComplete: mapped.verificationUriComplete,
+      expiresAt: Date.now() + mapped.expiresIn * 1000,
+    }
+    console.log(`[device] code ${mapped.userCode} interval=${mapped.intervalMs}ms expires=${mapped.expiresIn}s`)
+    this.scheduleDevicePoll(0)
+    return mapped
   }
 
-  async pollDeviceCode(deviceCode: string): Promise<{ pending: boolean; status?: AccountStatus }> {
-    this.session.profile = 'tv'
-    try {
-      const json = await this.tokenJson({
-        url: `${HOSTS.api}/auth/v1/device/token`,
-        contentType: 'application/json',
-        body: JSON.stringify({ device_id: this.session.deviceId, device_code: deviceCode }),
-      })
-      if (!json.access_token) return { pending: true }
-      this.loginKind = 'device'
-      this.session.etpRt = undefined
-      this.adopt(json)
-      return { pending: false, status: this.status() }
-    } catch (error) {
-      if (error instanceof CrError && (error.status === 400 || error.status === 401 || error.status === 404)) {
-        const code = errorCode(error.body)
-        if (code === 'slow_down') return { pending: true }
-        if (code === 'expired' || code === 'access_denied') throw error
-        return { pending: true }
-      }
-      throw error
+  async pollDeviceCode(deviceCode?: string): Promise<{ pending: boolean; status?: AccountStatus; flow: DeviceFlowState }> {
+    const code = deviceCode || this.deviceCode
+    if (!code) return { pending: true, flow: this.deviceStatus() }
+    if (this.deviceFlow.status === 'ok') return { pending: false, status: this.status(), flow: this.deviceStatus() }
+    if (this.deviceFlow.status === 'expired' || this.deviceFlow.status === 'error') {
+      return { pending: false, flow: this.deviceStatus() }
     }
+    await this.tickDevicePoll(code)
+    const flow = this.deviceStatus()
+    const done = flow.status === 'ok'
+    return { pending: !done, status: done ? this.status() : undefined, flow }
   }
 
   async accessToken(force = false): Promise<string> {
@@ -243,32 +262,118 @@ export class Auth {
     return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
   }
 
-  private async refresh(): Promise<string> {
-    if (this.session.profile === 'web' && this.session.etpRt) {
-      const json = await this.tokenRequest({
-        grant_type: 'etp_rt_cookie',
-        device_id: this.session.deviceId,
-        device_type: DEVICE.web.type,
-        scope: 'offline_access',
-      }, `etp_rt=${this.session.etpRt}`)
-      this.adopt(json)
-      return this.tokens!.accessToken
+  private stopDevicePoll(): void {
+    if (this.devicePollTimer) {
+      clearTimeout(this.devicePollTimer)
+      this.devicePollTimer = null
     }
-    if (this.session.refreshToken) {
-      const json = await this.tokenRequest({
-        grant_type: 'refresh_token',
-        refresh_token: this.session.refreshToken,
-        scope: 'offline_access',
-        device_id: this.session.deviceId,
-        device_type: this.session.profile === 'tv' ? DEVICE.tv.type : DEVICE.web.type,
-      })
-      this.adopt(json)
-      return this.tokens!.accessToken
-    }
-    throw new Error('Not logged in to Crunchyroll. Open the source page and sign in.')
   }
 
-  private adopt(json: TokenJson): void {
+  private scheduleDevicePoll(delayMs: number): void {
+    this.stopDevicePoll()
+    this.devicePollTimer = setTimeout(() => {
+      void this.tickDevicePoll(this.deviceCode ?? '').catch((error) => {
+        console.log('[device] poll failed', error instanceof Error ? error.message : error)
+      })
+    }, delayMs)
+  }
+
+  private async tickDevicePoll(deviceCode: string): Promise<void> {
+    if (!deviceCode) return
+    if (this.deviceFlow.expiresAt && Date.now() > this.deviceFlow.expiresAt) {
+      this.stopDevicePoll()
+      this.deviceFlow = { ...this.deviceFlow, status: 'expired', error: 'Code expired. Get a new one.' }
+      return
+    }
+    const res = await this.transport.request({
+      url: `${HOSTS.api}/auth/v1/device/token`,
+      method: 'POST',
+      headers: crHeaders({
+        profile: 'tv',
+        authorization: TV_CLIENT_BASIC,
+        contentType: 'application/json',
+      }),
+      body: JSON.stringify({ device_id: this.session.deviceId, device_code: deviceCode }),
+    })
+    const json = parseJsonBody(res)
+    const verdict = interpretDeviceToken(res.status, json, res.text)
+    console.log(`[device] poll ${verdict.status} http=${res.status} body=${res.body.length}`)
+    if (verdict.status === 'ok' && json?.access_token) {
+      this.stopDevicePoll()
+      this.loginKind = 'device'
+      this.session.etpRt = undefined
+      this.adopt(json, 'tv')
+      this.deviceFlow = { ...this.deviceFlow, status: 'ok', error: undefined }
+      return
+    }
+    if (verdict.status === 'expired') {
+      this.stopDevicePoll()
+      this.deviceFlow = { ...this.deviceFlow, status: 'expired', error: 'Code expired. Get a new one.' }
+      return
+    }
+    if (verdict.status === 'error') {
+      this.stopDevicePoll()
+      this.deviceFlow = { ...this.deviceFlow, status: 'error', error: verdict.error || 'Device login failed' }
+      return
+    }
+    const wait = verdict.status === 'slow_down' ? Math.min(15_000, this.deviceIntervalMs * 2) : this.deviceIntervalMs
+    this.deviceIntervalMs = wait
+    this.deviceFlow = { ...this.deviceFlow, status: 'waiting' }
+    this.scheduleDevicePoll(wait)
+  }
+
+  private async refresh(): Promise<string> {
+    if (this.session.etpRt) {
+      try {
+        const json = await this.tokenRequest('web', {
+          grant_type: 'etp_rt_cookie',
+          device_id: this.session.deviceId,
+          device_type: DEVICE.web.type,
+          scope: 'offline_access',
+        }, `etp_rt=${this.session.etpRt}`)
+        this.adopt(json, 'web')
+        this.loginKind = 'etp_rt'
+        return this.tokens!.accessToken
+      } catch (error) {
+        if (!isInvalidGrant(error)) throw error
+        this.session.etpRt = undefined
+        saveSession(this.session)
+      }
+    }
+    if (this.session.refreshToken) {
+      try {
+        const json = await this.tokenRequest('tv', {
+          grant_type: 'refresh_token',
+          refresh_token: this.session.refreshToken,
+          scope: 'offline_access',
+          device_id: this.session.deviceId,
+          device_type: DEVICE.tv.type,
+        })
+        this.adopt(json, 'tv')
+        return this.tokens!.accessToken
+      } catch (error) {
+        if (isInvalidGrant(error)) {
+          this.forgetTokens()
+          throw new Error('Crunchyroll session expired. Open http://127.0.0.1:17871 and sign in again.')
+        }
+        throw error
+      }
+    }
+    this.forgetTokens()
+    throw new Error('Not logged in to Crunchyroll. Open http://127.0.0.1:17871 and sign in.')
+  }
+
+  private forgetTokens(): void {
+    this.tokens = null
+    this.loginKind = 'none'
+    this.session.refreshToken = undefined
+    this.session.accessToken = undefined
+    this.session.accessExpiresAt = undefined
+    this.session.etpRt = undefined
+    saveSession(this.session)
+  }
+
+  private adopt(json: TokenJson, profile: ClientProfile): void {
     if (!json.access_token) throw new Error('Crunchyroll login did not return an access token')
     this.tokens = {
       accessToken: json.access_token,
@@ -279,33 +384,44 @@ export class Auth {
       country: json.country,
       tokenType: json.token_type ?? 'Bearer',
     }
+    this.session.profile = profile
     this.session.accessToken = this.tokens.accessToken
     this.session.accessExpiresAt = this.tokens.expiresAt
-    this.session.refreshToken = json.refresh_token ?? this.session.refreshToken
+    if (profile === 'tv') {
+      this.session.refreshToken = json.refresh_token ?? this.session.refreshToken
+    } else {
+      // Web etp_rt responses include a refresh_token that the web client cannot redeem.
+      this.session.refreshToken = undefined
+    }
     this.session.accountId = json.account_id ?? this.session.accountId
     this.session.profileId = json.profile_id ?? this.session.profileId
     this.session.country = json.country ?? this.session.country
     saveSession(this.session)
   }
 
-  private async tokenRequest(body: Record<string, string>, cookie?: string): Promise<TokenJson> {
-    const profile = this.session.profile
+  private async tokenRequest(profile: ClientProfile, body: Record<string, string>, cookie?: string): Promise<TokenJson> {
     return this.tokenJson({
       url: `${tokenHost(profile)}/auth/v1/token`,
       contentType: 'application/x-www-form-urlencoded',
       body: form(body),
       cookie,
+      profile,
     })
   }
 
-  private async tokenJson(opts: { url: string; contentType: string; body: string; cookie?: string }): Promise<TokenJson> {
-    const profile = this.session.profile
+  private async tokenJson(opts: {
+    url: string
+    contentType: string
+    body: string
+    cookie?: string
+    profile: ClientProfile
+  }): Promise<TokenJson> {
     const res = await this.transport.request({
       url: opts.url,
       method: 'POST',
       headers: crHeaders({
-        profile,
-        authorization: clientBasic(profile),
+        profile: opts.profile,
+        authorization: clientBasic(opts.profile),
         contentType: opts.contentType,
         cookie: opts.cookie,
       }),
@@ -313,8 +429,17 @@ export class Auth {
       cookie: opts.cookie,
     })
     const json = await jsonOrThrow<TokenJson>(res)
-    if (json.error) throw new CrError(res.status, res.text, json.error)
+    if (json?.error) throw new CrError(res.status, res.text, json.error)
     return json
+  }
+}
+
+function parseJsonBody(res: CrResponse): TokenJson | undefined {
+  if (!res.body.length) return undefined
+  try {
+    return JSON.parse(res.text) as TokenJson
+  } catch {
+    return undefined
   }
 }
 

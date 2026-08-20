@@ -52,7 +52,7 @@ Keep this process running while you use Izumi.
 | --- | --- | --- |
 | `etp_rt` cookie | Web | Copy from DevTools → Application → Cookies → `etp_rt`. Lasts until Crunchyroll expires it. |
 | Email + password | TV | Samsung TV OAuth client. Crunchyroll may disable password grant. |
-| Device code | TV | Pair at https://www.crunchyroll.com/activate |
+| Device code | TV | Pair at https://www.crunchyroll.com/activate. **Stay on the sidecar page** — it polls until Crunchyroll approves, then stores the tokens. |
 
 Import a Netscape cookie dump:
 

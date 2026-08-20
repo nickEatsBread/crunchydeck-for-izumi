@@ -47,7 +47,10 @@ async function jsonBody(req: IncomingMessage): Promise<Record<string, unknown>> 
 
 function fail(res: ServerResponse, error: unknown): void {
   const message = error instanceof Error ? error.message : String(error)
-  const status = error instanceof CrError ? (error.status >= 400 && error.status < 600 ? error.status : 502) : 400
+  const auth = /not logged in|session expired|invalid_grant|sign in/i.test(message)
+  const status = auth
+    ? 401
+    : error instanceof CrError ? (error.status >= 400 && error.status < 600 ? error.status : 502) : 400
   send(res, status, { error: message })
 }
 
@@ -116,6 +119,10 @@ async function handle(app: CrunchyrollApp, req: IncomingMessage, res: ServerResp
     }
     if (req.method === 'POST' && url.pathname === '/api/login/device') {
       send(res, 200, await app.requestDeviceCode())
+      return
+    }
+    if (req.method === 'GET' && url.pathname === '/api/login/device/status') {
+      send(res, 200, app.deviceStatus())
       return
     }
     if (req.method === 'POST' && url.pathname === '/api/login/device/poll') {

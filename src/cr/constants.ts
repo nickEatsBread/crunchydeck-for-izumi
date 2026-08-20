@@ -42,7 +42,8 @@ export type ClientProfile = 'tv' | 'web'
 
 export const DEVICE = {
   web: { type: 'Chrome on Windows', name: 'Izumi Crunchyroll Source' },
-  tv: { type: 'Samsung TV', name: 'Crunchyroll' },
+  // Same strings crunchy-deck sends with the Samsung TV OAuth client.
+  tv: { type: 'Crunchyroll for Linux', name: 'Crunchy Deck' },
 } as const
 
 export const DEFAULT_LOCALE = 'en-US'

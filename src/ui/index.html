@@ -61,6 +61,25 @@
     ol { color: var(--muted); }
     .row { display: flex; gap: 12px; flex-wrap: wrap; }
     .row > * { flex: 1; min-width: 200px; }
+    .code {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      margin: 16px 0;
+      flex-wrap: wrap;
+    }
+    .code span {
+      display: grid;
+      place-items: center;
+      min-width: 2rem;
+      height: 2.6rem;
+      padding: 0 4px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #101014;
+      font: 700 1.35rem/1 ui-monospace, monospace;
+      letter-spacing: 0.04em;
+    }
   </style>
 </head>
 <body>
@@ -107,8 +126,10 @@
 
     <section class="card">
       <h2>TV device code</h2>
-      <p class="lead">Opens the official activate flow. Pair at <code>crunchyroll.com/activate</code>.</p>
+      <p class="lead">Stay on this page. The sidecar polls Crunchyroll the same way crunchy-deck does until the TV code is approved, then it saves the tokens.</p>
       <button id="deviceBtn">Get a device code</button>
+      <p id="deviceHint" class="status"></p>
+      <div id="code" class="code" hidden></div>
       <p id="device" class="status"></p>
     </section>
 
@@ -134,11 +155,11 @@
       const s = await j('/api/status')
       $('manifest').textContent = s.manifestUrl || location.origin + '/index.json'
       const el = $('status')
-      if (s.authenticated) {
+      if (s.authenticated && (s.accountId || s.login !== 'none')) {
         el.className = 'status ok'
         el.textContent = 'Signed in as ' + (s.accountId || 'account') +
           (s.country ? ' · ' + s.country : '') +
-          ' · ' + s.profile + ' client · ' + s.transport + ' transport'
+          ' · ' + s.profile + ' client · ' + s.login + ' · ' + s.transport + ' transport'
       } else {
         el.className = 'status'
         el.textContent = 'Not signed in. Crunchyroll requires your own account.'
@@ -157,26 +178,60 @@
       try { await j('/api/logout', {}, 'POST'); msg('Signed out', 'ok'); await refreshStatus() }
       catch (e) { msg(e.message, 'err') }
     }
+    let deviceWatch = null
+    function stopDeviceWatch() {
+      if (deviceWatch) { clearInterval(deviceWatch); deviceWatch = null }
+    }
+    function renderCode(userCode) {
+      const box = $('code')
+      box.hidden = !userCode
+      box.replaceChildren()
+      for (const ch of String(userCode || '').toUpperCase()) {
+        const span = document.createElement('span')
+        span.textContent = ch
+        box.appendChild(span)
+      }
+    }
+    async function watchDevice() {
+      const flow = await j('/api/login/device/status')
+      if (flow.userCode) renderCode(flow.userCode)
+      if (flow.status === 'waiting') {
+        $('deviceHint').textContent = 'Go to ' + (flow.verificationUri || 'https://www.crunchyroll.com/activate') + ' and enter the code. Stay here — this page keeps checking.'
+        $('device').className = 'status'
+        $('device').textContent = 'Waiting for Crunchyroll to approve the TV…'
+      } else if (flow.status === 'ok') {
+        stopDeviceWatch()
+        $('device').className = 'status ok'
+        $('device').textContent = 'TV device linked. Tokens saved.'
+        msg('Signed in with TV device code', 'ok')
+        await refreshStatus()
+      } else if (flow.status === 'expired') {
+        stopDeviceWatch()
+        $('device').className = 'status err'
+        $('device').textContent = flow.error || 'Code expired. Get a new one.'
+      } else if (flow.status === 'error') {
+        stopDeviceWatch()
+        $('device').className = 'status err'
+        $('device').textContent = flow.error || 'Device login failed'
+      }
+    }
     $('deviceBtn').onclick = async () => {
       try {
+        stopDeviceWatch()
         const code = await j('/api/login/device', {})
-        $('device').textContent = 'Go to ' + code.verificationUri + ' and enter ' + code.userCode
-        const timer = setInterval(async () => {
-          try {
-            const poll = await j('/api/login/device/poll', { deviceCode: code.deviceCode })
-            if (!poll.pending) {
-              clearInterval(timer)
-              msg('TV device linked', 'ok')
-              await refreshStatus()
-            }
-          } catch (e) {
-            clearInterval(timer)
-            msg(e.message, 'err')
-          }
-        }, Math.max(3, code.interval || 5) * 1000)
+        renderCode(code.userCode)
+        $('deviceHint').textContent = 'Go to ' + (code.verificationUri || 'https://www.crunchyroll.com/activate') +
+          (code.verificationUriComplete && code.verificationUriComplete !== code.verificationUri
+            ? ' (or open ' + code.verificationUriComplete + ')'
+            : '')
+        $('device').className = 'status'
+        $('device').textContent = 'Waiting for Crunchyroll to approve the TV…'
+        await watchDevice()
+        deviceWatch = setInterval(() => { watchDevice().catch((e) => msg(e.message, 'err')) }, 1000)
       } catch (e) { msg(e.message, 'err') }
     }
     refreshStatus().catch((e) => { $('status').textContent = e.message; $('status').className = 'status err' })
+    watchDevice().catch(() => {})
   </script>
 </body>
 </html>

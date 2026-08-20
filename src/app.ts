@@ -1,4 +1,4 @@
-import { Auth, type AccountStatus, type DeviceCode } from './cr/auth.js'
+import { Auth, type AccountStatus, type DeviceCode, type DeviceFlowState } from './cr/auth.js'
 import { Catalog, type EpisodeHit, type SearchHit } from './cr/catalog.js'
 import { tryChromeTransport } from './cr/chrome.js'
 import { FetchTransport, type CrTransport } from './cr/http.js'
@@ -70,7 +70,11 @@ export class CrunchyrollApp {
     return this.auth.requestDeviceCode()
   }
 
-  async pollDeviceCode(deviceCode: string) {
+  deviceStatus(): DeviceFlowState {
+    return this.auth.deviceStatus()
+  }
+
+  async pollDeviceCode(deviceCode?: string) {
     const result = await this.auth.pollDeviceCode(deviceCode)
     if (!result.pending) await this.syncChromeProfile()
     return result
@@ -125,6 +129,7 @@ export class CrunchyrollApp {
   }
 
   async close(): Promise<void> {
+    this.auth.shutdown()
     await this.play.closeAll()
     await this.transport.close?.()
   }
