@@ -31,6 +31,7 @@ export const HOSTS = {
   api: 'https://beta-api.crunchyroll.com',
   play: 'https://cr-play-service.prd.crunchyrollsvc.com',
   static: 'https://static.crunchyroll.com',
+  license: 'https://cr-license-proxy.prd.crunchyrollsvc.com/v1/license/widevine',
 } as const
 
 export const PLAY_PLATFORM = {

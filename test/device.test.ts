@@ -48,6 +48,9 @@ test('invalid_grant is detected in CR oauth errors', () => {
 
 test('chromium page fetch is only used for www.crunchyroll.com, not beta-api', () => {
   assert.equal(usesChromiumPage('https://www.crunchyroll.com/auth/v1/token'), true)
+  assert.equal(usesChromiumPage('https://www.crunchyroll.com/playback/v3/x/web/chrome/play'), true)
+  assert.equal(usesChromiumPage('https://www.crunchyroll.com/playback/v2/manifest/x/static/y/0/en-US/dash/manifest.mpd'), true)
+  assert.equal(usesChromiumPage('https://www.crunchyroll.com/static/preview.bif'), false)
   assert.equal(usesChromiumPage('https://beta-api.crunchyroll.com/content/v2/discover/search?q=x'), false)
   assert.equal(usesChromiumPage('https://cr-play-service.prd.crunchyrollsvc.com/v1/x'), false)
 })

@@ -1,4 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { randomBytes } from 'node:crypto'
+import { once } from 'node:events'
+import { networkInterfaces } from 'node:os'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -6,6 +9,7 @@ import type { CrunchyrollApp } from './app.js'
 import { CrError } from './cr/errors.js'
 import { loadRewrittenManifest, resolveCdnUrl } from './cr/proxy.js'
 import { DEFAULT_PORT } from './cr/constants.js'
+import { loadOrCreateShareToken } from './storage.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const uiHtml = () => readFileSync(join(here, 'ui', 'index.html'), 'utf8')
@@ -23,8 +27,9 @@ function send(res: ServerResponse, status: number, body: unknown, type = 'applic
     'content-type': type,
     'cache-control': 'no-store',
     'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'content-type, authorization',
+    'access-control-allow-headers': 'content-type, authorization, origin, range',
     'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS',
+    'access-control-allow-private-network': 'true',
   })
   res.end(payload)
 }
@@ -45,13 +50,84 @@ function sendMedia(res: ServerResponse, fetched: { status: number; contentType: 
   res.end(fetched.body)
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
+async function sendMediaStream(
+  res: ServerResponse,
+  fetched: {
+    status: number
+    contentType: string
+    body: {
+      getReader(): {
+        read(): Promise<{ done: boolean; value?: Uint8Array }>
+        releaseLock(): void
+      }
+    } | Buffer | null
+    headers: Record<string, string>
+  },
+): Promise<void> {
+  // A transport without streaming support falls back to the existing buffered response.
+  if (Buffer.isBuffer(fetched.body)) {
+    sendMedia(res, { ...fetched, body: fetched.body })
+    return
+  }
+  const headers: Record<string, string> = {
+    'content-type': fetched.contentType,
+    // Segment URLs include the representation and sequence number. Let the
+    // WebView reuse init/recent media across rapid seeks instead of returning
+    // to CloudFront for the same immutable bytes.
+    'cache-control': fetched.status < 400 ? 'private, max-age=600' : 'no-store',
+    'access-control-allow-origin': '*',
+  }
+  for (const name of ['content-length', 'content-range', 'accept-ranges']) {
+    if (fetched.headers[name]) headers[name] = fetched.headers[name]
+  }
+  res.writeHead(fetched.status, headers)
+  if (!fetched.body) {
+    res.end()
+    return
+  }
+  const reader = fetched.body.getReader()
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (res.destroyed) break
+      if (value && !res.write(value)) await once(res, 'drain')
+    }
+    if (!res.destroyed) res.end()
+  } catch (error) {
+    if (!res.destroyed) res.destroy(error instanceof Error ? error : new Error(String(error)))
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+async function proxyMediaStream(
+  app: CrunchyrollApp,
+  req: IncomingMessage,
+  res: ServerResponse,
+  session: NonNullable<ReturnType<CrunchyrollApp['session']>>,
+  target: string,
+): Promise<void> {
+  const abort = new AbortController()
+  const cancel = () => abort.abort()
+  req.once('aborted', cancel)
+  res.once('close', cancel)
+  const range = typeof req.headers.range === 'string' ? { Range: req.headers.range } : undefined
+  const fetched = await app.play.fetchStream(session, target, range, abort.signal)
+  await sendMediaStream(res, fetched)
+}
+
+function readBinaryBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     req.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('end', () => resolve(Buffer.concat(chunks)))
     req.on('error', reject)
   })
+}
+
+function readBody(req: IncomingMessage): Promise<string> {
+  return readBinaryBody(req).then((buf) => buf.toString('utf8'))
 }
 
 async function jsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -70,16 +146,41 @@ function fail(res: ServerResponse, error: unknown): void {
   send(res, status, { error: message })
 }
 
+function lanAddress(): string | undefined {
+  const candidates: Array<{ address: string; score: number }> = []
+  for (const [name, entries] of Object.entries(networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.family !== 'IPv4' || entry.internal || entry.address.startsWith('169.254.')) continue
+      const label = name.toLowerCase()
+      let score = 0
+      if (/wi-?fi|wlan|wireless|ethernet|^en\d+$|^eth\d+$/.test(label)) score += 20
+      if (/virtual|vethernet|vmware|hyper-v|wsl|docker|loopback|zerotier|tailscale/.test(label)) score -= 50
+      candidates.push({ address: entry.address, score })
+    }
+  }
+  return candidates.sort((a, b) => b.score - a.score)[0]?.address
+}
+
+function isLoopback(req: IncomingMessage): boolean {
+  const address = req.socket.remoteAddress ?? ''
+  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1'
+}
+
 export function listen(app: CrunchyrollApp, port = DEFAULT_PORT): Promise<{ port: number; close: () => Promise<void> }> {
+  const shareToken = loadOrCreateShareToken()
+  const partyToken = randomBytes(24).toString('base64url')
   const server = createServer((req, res) => {
-    void handle(app, req, res)
+    void handle(app, req, res, shareToken, partyToken)
   })
   return new Promise((resolve, reject) => {
     server.on('error', reject)
-    server.listen(port, '127.0.0.1', () => {
+    server.listen(port, process.env.CR_SOURCE_HOST || '0.0.0.0', () => {
       const address = server.address()
       const actual = typeof address === 'object' && address ? address.port : port
       app.baseUrl = `http://127.0.0.1:${actual}`
+      const advertised = process.env.CR_PUBLIC_HOST || lanAddress()
+      app.shareBaseUrl = advertised ? `http://${advertised}:${actual}/share/${shareToken}` : ''
+      app.partyBaseUrl = advertised ? `http://${advertised}:${actual}/share/${partyToken}` : ''
       resolve({
         port: actual,
         close: () => new Promise((done, failClose) => server.close((err) => err ? failClose(err) : done())),
@@ -88,10 +189,44 @@ export function listen(app: CrunchyrollApp, port = DEFAULT_PORT): Promise<{ port
   })
 }
 
-async function handle(app: CrunchyrollApp, req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handle(
+  app: CrunchyrollApp,
+  req: IncomingMessage,
+  res: ServerResponse,
+  shareToken: string,
+  partyToken: string,
+): Promise<void> {
   const url = new URL(req.url ?? '/', app.baseUrl)
+  const shared = url.pathname.match(/^\/share\/([^/]+)(\/.*)$/)
+  const scope = shared?.[1] === shareToken ? 'android' : shared?.[1] === partyToken ? 'party' : 'local'
+  if (scope !== 'local') url.pathname = shared?.[2] ?? '/'
+  else if (!isLoopback(req)) {
+    send(res, 403, { error: 'A valid Watch Together playback capability is required.' })
+    return
+  }
+  const remoteBase = scope === 'party' ? app.partyBaseUrl : scope === 'android' ? app.shareBaseUrl : app.baseUrl
+  if (scope === 'party' && !(
+    url.pathname.startsWith('/v/')
+    && (req.method === 'GET' || req.method === 'OPTIONS' || (req.method === 'POST' && url.pathname.endsWith('/license')))
+  )) {
+    send(res, 403, { error: 'A Watch Together capability can only read its shared playback session.' })
+    return
+  }
+  if (scope === 'android' && !(
+    url.pathname === '/index.json'
+    || url.pathname === '/provider.js'
+    || url.pathname === '/api/status'
+    || url.pathname === '/api/search'
+    || url.pathname === '/api/episodes'
+    || url.pathname === '/api/play'
+    || url.pathname.startsWith('/v/')
+  )) {
+    send(res, 403, { error: 'This playback capability cannot manage the Crunchyroll account.' })
+    return
+  }
   if (url.pathname !== '/favicon.ico') {
-    console.log(`[http] ${req.method} ${url.pathname}`)
+    const query = url.search.length && url.search.length < 64 ? url.search : ''
+    console.log(`[http] ${req.method} ${url.pathname}${query}`)
   }
   if (req.method === 'OPTIONS') {
     send(res, 204, '')
@@ -116,11 +251,15 @@ async function handle(app: CrunchyrollApp, req: IncomingMessage, res: ServerResp
       return
     }
     if (req.method === 'GET' && url.pathname === '/provider.js') {
-      send(res, 200, providerSrc().replaceAll('__BASE__', app.baseUrl), 'application/javascript; charset=utf-8')
+      send(res, 200, providerSrc().replaceAll('__BASE__', remoteBase), 'application/javascript; charset=utf-8')
       return
     }
     if (req.method === 'GET' && url.pathname === '/api/status') {
-      send(res, 200, { ...app.status(), manifestUrl: `${app.baseUrl}/index.json` })
+      send(res, 200, {
+        ...app.status(),
+        manifestUrl: `${remoteBase}/index.json`,
+        androidManifestUrl: app.shareBaseUrl ? `${app.shareBaseUrl}/index.json` : undefined,
+      })
       return
     }
     if (req.method === 'POST' && url.pathname === '/api/login/etp') {
@@ -173,17 +312,63 @@ async function handle(app: CrunchyrollApp, req: IncomingMessage, res: ServerResp
       const body = req.method === 'POST' ? await jsonBody(req) : {}
       const id = String(url.searchParams.get('id') ?? body.id ?? '')
       console.log(`[http] play id=${id}`)
-      send(res, 200, await app.episodeServer(id))
+      send(res, 200, await app.episodeServer(id, 'en-US', remoteBase))
       return
     }
-    const manifest = url.pathname.match(/^\/v\/([^/]+)\/manifest\.(mpd|m3u8)$/)
-    if (req.method === 'GET' && manifest) {
-      const session = app.session(manifest[1] ?? '')
+    const license = url.pathname.match(/^\/v\/([^/]+)\/license$/)
+    if (req.method === 'POST' && license) {
+      const session = app.session(license[1] ?? '')
       if (!session) {
         send(res, 404, { error: 'unknown play session' })
         return
       }
-      const rewritten = await loadRewrittenManifest(app.play, session, app.baseUrl)
+      const challenge = await readBinaryBody(req)
+      const body = await app.play.fetchLicense(session, challenge)
+      res.writeHead(200, {
+        'content-type': 'application/octet-stream',
+        'cache-control': 'no-store',
+        'access-control-allow-origin': '*',
+        'access-control-allow-private-network': 'true',
+        'content-length': String(body.length),
+      })
+      res.end(body)
+      return
+    }
+    const playSession = url.pathname.match(/^\/v\/([^/]+)\/session$/)
+    if (req.method === 'DELETE' && playSession) {
+      await app.play.release(playSession[1] ?? '')
+      send(res, 200, { ok: true })
+      return
+    }
+    const source = url.pathname.match(/^\/v\/([^/]+)\/source$/)
+    if (req.method === 'GET' && source) {
+      const id = source[1] ?? ''
+      const session = app.session(id)
+      if (session) await app.play.ensureLiveToken(session)
+      const mapped = app.sessionSource(
+        id,
+        'en-US',
+        remoteBase,
+      )
+      if (!mapped) {
+        send(res, 404, { error: 'unknown play session' })
+        return
+      }
+      send(res, 200, mapped)
+      return
+    }
+    const manifest = url.pathname.match(/^\/v\/([^/]+)\/manifest\.(mpd|m3u8)$/)
+    if (req.method === 'GET' && manifest) {
+      let session = app.session(manifest[1] ?? '')
+      if (!session) {
+        send(res, 404, { error: 'unknown play session' })
+        return
+      }
+      const audio = url.searchParams.get('audio')
+      if (audio) session = await app.play.ensureAudio(session, audio)
+      const hard = url.searchParams.get('hard')
+      const alt = hard ? session.hardSubs.find((track) => track.language === hard)?.url : undefined
+      const rewritten = await loadRewrittenManifest(app.play, session, remoteBase, alt)
       send(res, 200, rewritten.body, rewritten.contentType)
       return
     }
@@ -195,9 +380,7 @@ async function handle(app: CrunchyrollApp, req: IncomingMessage, res: ServerResp
         send(res, 404, { error: 'unknown asset' })
         return
       }
-      const range = typeof req.headers.range === 'string' ? { Range: req.headers.range } : undefined
-      const fetched = await app.play.fetchBinary(session, target, range)
-      sendMedia(res, fetched)
+      await proxyMediaStream(app, req, res, session, target)
       return
     }
     const cdn = url.pathname.match(/^\/v\/([^/]+)\/cdn\/(.*)$/)
@@ -208,22 +391,18 @@ async function handle(app: CrunchyrollApp, req: IncomingMessage, res: ServerResp
         send(res, 404, { error: 'unknown cdn asset' })
         return
       }
-      const range = typeof req.headers.range === 'string' ? { Range: req.headers.range } : undefined
-      const fetched = await app.play.fetchBinary(session, target, range)
-      sendMedia(res, fetched)
+      await proxyMediaStream(app, req, res, session, target)
       return
     }
     const relative = url.pathname.match(/^\/v\/([^/]+)\/(.+)$/)
-    if (req.method === 'GET' && relative && relative[2] !== 'manifest.mpd' && relative[2] !== 'asset') {
+    if (req.method === 'GET' && relative && relative[2] !== 'manifest.mpd' && relative[2] !== 'asset' && relative[2] !== 'license' && relative[2] !== 'source') {
       const session = app.session(relative[1] ?? '')
       const target = session ? resolveCdnUrl(session, relative[2] ?? '', url.search) : undefined
       if (!session || !target) {
         send(res, 404, { error: 'unknown session asset' })
         return
       }
-      const range = typeof req.headers.range === 'string' ? { Range: req.headers.range } : undefined
-      const fetched = await app.play.fetchBinary(session, target, range)
-      sendMedia(res, fetched)
+      await proxyMediaStream(app, req, res, session, target)
       return
     }
     send(res, 404, { error: 'not found' })

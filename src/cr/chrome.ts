@@ -1,13 +1,19 @@
 import { existsSync } from 'node:fs'
 import puppeteer, { type Browser, type Page } from 'puppeteer-core'
 import { CHROME_UA, HOSTS, TIZEN_UA, type ClientProfile } from './constants.js'
-import { FetchTransport, makeResponse, type CrRequest, type CrResponse, type CrTransport } from './http.js'
+import { FetchTransport, makeResponse, type CrRequest, type CrResponse, type CrStreamResponse, type CrTransport } from './http.js'
 
-/** Page-evaluate fetch is same-origin to www.crunchyroll.com. beta-api / play / CDN are CORS and throw "Failed to fetch". */
+/** Page-evaluate fetch is same-origin to www.crunchyroll.com. beta-api / play / CDN are CORS and throw "Failed to fetch".
+ *  Large binaries stay on Node (page.evaluate base64 of a BIF/segment is too slow). MPD/JSON
+ *  stay on Chrome so Cloudflare sees a real browser — but only one evaluate at a time. */
 export function usesChromiumPage(url: string): boolean {
   try {
-    const host = new URL(url).hostname.toLowerCase()
-    return host === 'www.crunchyroll.com' || host === 'crunchyroll.com'
+    const parsed = new URL(url)
+    const host = parsed.hostname.toLowerCase()
+    if (host !== 'www.crunchyroll.com' && host !== 'crunchyroll.com') return false
+    const path = parsed.pathname.toLowerCase()
+    if (/\.(mp4|m4s|ts|bif|jpg|jpeg|png|webp|vtt|ass|ssa|srt)$/i.test(path)) return false
+    return true
   } catch {
     return false
   }
@@ -53,6 +59,7 @@ export class ChromeTransport implements CrTransport {
   private page: Page | null = null
   private profile: ClientProfile = 'web'
   private launching: Promise<void> | null = null
+  private pageTail: Promise<unknown> = Promise.resolve()
   private readonly node = new FetchTransport()
 
   constructor(private readonly executablePath: string) {}
@@ -63,13 +70,39 @@ export class ChromeTransport implements CrTransport {
   }
 
   async request(req: CrRequest): Promise<CrResponse> {
+    // Page-evaluate fetch can only send a string body. Widevine challenges are binary.
+    if (typeof req.body !== 'string' && req.body != null) return this.node.request(req)
     if (!usesChromiumPage(req.url)) return this.node.request(req)
+    return this.serializedPageFetch(req)
+  }
+
+  stream(req: CrRequest): Promise<CrStreamResponse> {
+    return this.node.stream(req)
+  }
+
+  /** Puppeteer will hang if two page.evaluate fetches run at once (Shaka retries `?hard=`). */
+  private async serializedPageFetch(req: CrRequest): Promise<CrResponse> {
+    const timeout = req.timeoutMs && req.timeoutMs > 0 ? req.timeoutMs : 8_000
+    let unlock!: () => void
+    const gate = new Promise<void>((resolve) => {
+      unlock = resolve
+    })
+    const prev = this.pageTail
+    this.pageTail = prev.then(() => gate, () => gate)
+    await prev.catch(() => {})
     try {
-      return await this.pageFetch(req)
+      return await Promise.race([
+        this.pageFetch(req),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('chrome page fetch timeout')), timeout)
+        }),
+      ])
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       console.warn('[cr] chrome page fetch failed, using node:', message.slice(0, 160))
-      return this.node.request(req)
+      return this.node.request({ ...req, timeoutMs: timeout })
+    } finally {
+      unlock()
     }
   }
 
@@ -115,7 +148,7 @@ export class ChromeTransport implements CrTransport {
         url: req.url,
         method: req.method ?? (req.body ? 'POST' : 'GET'),
         headers,
-        body: req.body,
+        body: typeof req.body === 'string' ? req.body : undefined,
       },
     )
     return makeResponse(result.status, result.url, result.headers, Buffer.from(result.bodyB64, 'base64'))

@@ -40,6 +40,11 @@ This source copies that model:
 
    `http://127.0.0.1:17871/index.json`
 
+The startup output also prints a tokenized `Android` manifest URL for devices on the same LAN.
+Install that URL in Izumi on Android to let its System WebView use Shaka + Widevine while the
+sidecar remains on the signed-in PC. The token grants playback/search access but cannot log out or
+change the Crunchyroll account. It is also the address Izumi sends to Watch Together guests.
+
 Do not paste it into the Stremio addon URL box. Izumi upgrades those to
 HTTPS, which a local HTTP server cannot serve. The **extension** list accepts
 `http://127.0.0.1`.
@@ -62,22 +67,22 @@ npm run import-cookies -- "C:\path\to\cookies.txt"
 
 ## Playback
 
-Crunchyroll's current play API returns **Widevine DASH** (CENC). Izumi plays
-HTTP streams in libmpv, which cannot decrypt Widevine. The source still:
+Crunchyroll's current play API returns **Widevine DASH** (CENC). The source:
 
-- resolves the official play session
+- gives Izumi a local deferred row without opening a Crunchyroll play session
+- opens one official play session only when Shaka requests the selected row
 - proxies the manifest and segments with the correct Referer / Origin /
   Authorization headers (CDN hotlink protection)
+- proxies and unwraps the Widevine license response for Izumi's generic Shaka player
 - exposes Crunchyroll's official ASS/VTT subtitle URLs
+- releases the play token when Izumi switches streams or closes the player
 
-You will see Crunchyroll rows in Izumi's source picker. Playing the video
-itself needs a Widevine CDM in the player — which this repo must not add
-inside Izumi.
+The matching Izumi build needs its Shaka/WebView2 DRM player path. libmpv by
+itself cannot decrypt these streams.
 
-Many Crunchyroll plans allow **one concurrent stream**. Restarting the sidecar
-without a clean shutdown can leak that slot until Crunchyroll expires it
-(a few minutes). The sidecar records active play tokens and releases them on
-the next start.
+Many Crunchyroll plans allow **one concurrent stream**. Picker discovery does
+not consume that slot. The selected stream is released explicitly; if the
+process crashes, the sidecar records the token and releases it on next start.
 
 ## Development
 

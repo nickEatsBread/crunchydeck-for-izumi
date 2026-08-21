@@ -97,6 +97,7 @@
         <li>Keep this server running.</li>
         <li>In Izumi go to Settings → Sources / Extensions.</li>
         <li>Paste <code id="manifest">http://127.0.0.1:17871/index.json</code></li>
+        <li>Android on this Wi-Fi: paste <code id="androidManifest">Unavailable until a LAN address is found</code></li>
       </ol>
     </section>
 
@@ -154,6 +155,7 @@
     async function refreshStatus() {
       const s = await j('/api/status')
       $('manifest').textContent = s.manifestUrl || location.origin + '/index.json'
+      $('androidManifest').textContent = s.androidManifestUrl || 'No LAN address found'
       const el = $('status')
       if (s.authenticated && (s.accountId || s.login !== 'none')) {
         el.className = 'status ok'

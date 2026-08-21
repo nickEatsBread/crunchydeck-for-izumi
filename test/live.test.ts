@@ -73,11 +73,14 @@ maybe('live: etp_rt login, search, episodes, play, izumi provider contract', asy
     t.diagnostic('play skipped: Crunchyroll concurrent-stream slot is already in use')
   } else {
     assert.equal(playRes.ok, true, playText)
-    const serverPayload = JSON.parse(playText) as { videoSources: Array<{ url: string; type: string; subtitles: unknown[] }> }
+    const serverPayload = JSON.parse(playText) as {
+      videoSources: Array<{ url: string; type: string; subtitles: unknown[]; drm?: { licenseUrl?: string } }>
+    }
     const source = serverPayload.videoSources[0]
     assert.ok(source, 'play should return a video source')
     assert.ok(source.url.includes('/v/'))
     assert.equal(source.type, 'dash')
+    assert.ok(source.drm?.licenseUrl?.includes('/license'), 'DASH sources must carry a license proxy')
 
     const mpdRes = await fetch(source.url)
     const mpd = await mpdRes.text()

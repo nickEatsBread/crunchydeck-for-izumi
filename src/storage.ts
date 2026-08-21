@@ -1,4 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import type { ClientProfile } from './cr/constants.js'
@@ -28,6 +29,25 @@ export function dataDir(): string {
 
 export function sessionPath(): string {
   return join(dataDir(), 'session.json')
+}
+
+function shareTokenPath(): string {
+  return join(dataDir(), 'share-token')
+}
+
+/** Stable bearer capability for Android installs. Rotating it on every process restart would
+ * silently invalidate the manifest URL saved on the phone. Kept separate from session.json so
+ * auth refresh writes and logout cannot accidentally replace it. */
+export function loadOrCreateShareToken(): string {
+  try {
+    const existing = readFileSync(shareTokenPath(), 'utf8').trim()
+    if (/^[A-Za-z0-9_-]{32,128}$/.test(existing)) return existing
+  } catch { /* create it below */ }
+  const dir = dataDir()
+  mkdirSync(dir, { recursive: true })
+  const token = randomBytes(24).toString('base64url')
+  writeFileSync(shareTokenPath(), token, { encoding: 'utf8', mode: 0o600 })
+  return token
 }
 
 export function loadSession(): SessionFile | null {

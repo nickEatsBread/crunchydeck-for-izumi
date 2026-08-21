@@ -3,7 +3,7 @@ import { Catalog, type EpisodeHit, type SearchHit } from './cr/catalog.js'
 import { tryChromeTransport } from './cr/chrome.js'
 import { FetchTransport, type CrTransport } from './cr/http.js'
 import { PlayService, type PlaySession } from './cr/play.js'
-import { proxyUrl } from './cr/proxy.js'
+import { initialPlaybackUrl } from './cr/proxy.js'
 import { loadSession } from './storage.js'
 import type { ClientProfile } from './cr/constants.js'
 
@@ -13,8 +13,30 @@ export interface VideoSource {
   quality: string
   server?: string
   audio?: 'sub' | 'dub'
+  audioLang?: string
   subtitleMode?: 'soft' | 'hard'
-  subtitles: Array<{ url: string; language: string; isDefault?: boolean }>
+  subtitles: Array<{
+    url: string
+    language: string
+    isDefault?: boolean
+    kind?: 'subtitles' | 'captions'
+    switchUrl?: string
+  }>
+  audioTracks?: Array<{
+    url?: string
+    language: string
+    switchUrl?: string
+  }>
+  previewUrl?: string
+  drm?: {
+    keySystem: string
+    licenseUrl: string
+    releaseUrl?: string
+    videoRobustness?: string
+    audioRobustness?: string
+  }
+  /** LAN-safe, capability-tokened equivalent used by Izumi Watch Together guests. */
+  share?: VideoSource
 }
 
 export interface EpisodeServer {
@@ -29,6 +51,8 @@ export class CrunchyrollApp {
   readonly catalog: Catalog
   readonly play: PlayService
   baseUrl = 'http://127.0.0.1:17871'
+  shareBaseUrl = ''
+  partyBaseUrl = ''
 
   private constructor(transport: CrTransport) {
     this.transport = transport
@@ -92,35 +116,89 @@ export class CrunchyrollApp {
     return this.catalog.episodes(id)
   }
 
-  async episodeServer(episodeId: string, preferredSub = 'en-US'): Promise<EpisodeServer> {
-    const session = await this.play.resolve(episodeId)
-    const url = proxyUrl(this.baseUrl, session)
-    const audio: 'sub' | 'dub' = session.audioLocale?.startsWith('ja') ? 'sub' : 'dub'
-    const subtitles = [...session.subtitles, ...session.captions]
-      .filter((track) => track.url)
-      .map((track) => ({
-        url: `${this.baseUrl}/v/${session.id}/asset?u=${encodeURIComponent(track.url)}`,
-        language: track.language,
-        isDefault: track.language === preferredSub || track.isDefault,
-      }))
-    const type = session.videoContainer === 'hls' ? 'm3u8' : 'dash'
+  async episodeServer(
+    episodeId: string,
+    preferredSub = 'en-US',
+    baseUrl = this.baseUrl,
+  ): Promise<EpisodeServer> {
+    const session = this.play.defer(episodeId, this.catalog.episodePlaybackMeta(episodeId))
+    const source = this.videoSourceFrom(session, preferredSub, baseUrl)
+    if (baseUrl === this.baseUrl && this.partyBaseUrl) {
+      // A Watch Together guest shares the host's local play session. Only the host owns its
+      // lifecycle: a guest leaving must not DELETE the session out from under everyone else.
+      source.share = this.videoSourceFrom(session, preferredSub, this.partyBaseUrl, false)
+    }
     return {
       server: 'Crunchyroll',
       headers: {
         Referer: 'https://www.crunchyroll.com/',
         Origin: 'https://www.crunchyroll.com',
       },
-      videoSources: [
-        {
-          url,
-          type,
-          quality: 'adaptive',
-          server: 'Crunchyroll',
-          audio,
-          subtitleMode: 'soft',
-          subtitles,
-        },
-      ],
+      videoSources: [source],
+    }
+  }
+
+  sessionSource(id: string, preferredSub = 'en-US', baseUrl = this.baseUrl): VideoSource | undefined {
+    const session = this.play.get(id)
+    return session ? this.videoSourceFrom(session, preferredSub, baseUrl) : undefined
+  }
+
+  private videoSourceFrom(
+    session: PlaySession,
+    preferredSub = 'en-US',
+    baseUrl = this.baseUrl,
+    includeRelease = true,
+  ): VideoSource {
+    const url = initialPlaybackUrl(baseUrl, session, preferredSub)
+    const audio: 'sub' | 'dub' = session.audioLocale?.startsWith('ja') ? 'sub' : 'dub'
+    const proxyTrack = (track: { url: string; language: string; isDefault?: boolean }, kind: 'subtitles' | 'captions') => ({
+      url: `${baseUrl}/v/${session.id}/asset?u=${encodeURIComponent(track.url)}`,
+      language: track.language,
+      isDefault: kind === 'subtitles' && (track.language === preferredSub || !!track.isDefault),
+      kind,
+    })
+    const softLangs = new Set(session.subtitles.map((track) => track.language))
+    const subtitles = [
+      ...session.subtitles.filter((track) => track.url).map((track) => proxyTrack(track, 'subtitles')),
+      ...session.captions.filter((track) => track.url).map((track) => proxyTrack(track, 'captions')),
+      ...session.hardSubs
+        .filter((track) => track.url && !softLangs.has(track.language))
+        .map((track) => ({
+          url: `${baseUrl}/v/${session.id}/manifest.mpd?hard=${encodeURIComponent(track.language)}`,
+          language: track.language,
+          kind: 'subtitles' as const,
+          isDefault: track.language === preferredSub && audio === 'sub',
+          switchUrl: `${baseUrl}/v/${session.id}/manifest.mpd?hard=${encodeURIComponent(track.language)}`,
+        })),
+    ]
+    const audioTracks = session.versions.map((version) => ({
+      language: version.language,
+      switchUrl: `${baseUrl}/v/${session.id}/manifest.mpd?audio=${encodeURIComponent(version.language)}`,
+    }))
+    const type = session.videoContainer === 'hls' ? 'm3u8' : 'dash'
+    const drm = type === 'dash'
+      ? {
+          keySystem: 'com.widevine.alpha',
+          licenseUrl: `${baseUrl}/v/${session.id}/license`,
+          releaseUrl: includeRelease ? `${baseUrl}/v/${session.id}/session` : undefined,
+          videoRobustness: 'SW_SECURE_CRYPTO',
+          audioRobustness: 'SW_SECURE_CRYPTO',
+        }
+      : undefined
+    return {
+      url,
+      type,
+      quality: 'adaptive',
+      server: 'Crunchyroll',
+      audio,
+      audioLang: session.audioLocale,
+      subtitleMode: session.subtitles.length || session.captions.length ? 'soft' : 'hard',
+      subtitles,
+      audioTracks: audioTracks.length ? audioTracks : undefined,
+      previewUrl: session.previewUrl
+        ? `${baseUrl}/v/${session.id}/asset?u=${encodeURIComponent(session.previewUrl)}`
+        : undefined,
+      drm,
     }
   }
 

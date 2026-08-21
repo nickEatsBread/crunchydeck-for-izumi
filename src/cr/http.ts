@@ -6,9 +6,13 @@ export interface CrRequest {
   url: string
   method?: string
   headers?: Record<string, string>
-  body?: string
+  body?: string | Uint8Array
   /** Browser fetch cannot set Cookie; Chrome transport uses the CDP jar instead. */
   cookie?: string
+  /** Abort the Node/Chrome fetch after this many milliseconds. */
+  timeoutMs?: number
+  /** Cancel an in-flight media request when the downstream Shaka request is abandoned. */
+  signal?: AbortSignal
 }
 
 export interface CrResponse {
@@ -19,9 +23,23 @@ export interface CrResponse {
   get text(): string
 }
 
+export interface CrStreamResponse {
+  status: number
+  url: string
+  headers: Record<string, string>
+  body: {
+    getReader(): {
+      read(): Promise<{ done: boolean; value?: Uint8Array }>
+      releaseLock(): void
+    }
+  } | null
+}
+
 export interface CrTransport {
   readonly name: string
   request(req: CrRequest): Promise<CrResponse>
+  /** Streaming response path for media segments; avoids buffering a whole m4s before Shaka sees it. */
+  stream?(req: CrRequest): Promise<CrStreamResponse>
   close?(): Promise<void>
 }
 
@@ -29,7 +47,7 @@ const h2Agent = new Agent({
   allowH2: true,
   keepAliveTimeout: 30_000,
   keepAliveMaxTimeout: 60_000,
-  connections: 8,
+  connections: 16,
 })
 
 function headerRecord(headers: Headers): Record<string, string> {
@@ -62,9 +80,29 @@ export class FetchTransport implements CrTransport {
       body: req.body,
       dispatcher: isCrunchyrollHost(req.url) ? h2Agent : undefined,
       redirect: 'follow',
+      signal: req.signal ?? (req.timeoutMs && req.timeoutMs > 0 ? AbortSignal.timeout(req.timeoutMs) : undefined),
     })
     const bytes = Buffer.from(await res.arrayBuffer())
     return makeResponse(res.status, res.url, headerRecord(res.headers), bytes)
+  }
+
+  async stream(req: CrRequest): Promise<CrStreamResponse> {
+    const headers = { ...(req.headers ?? {}) }
+    if (req.cookie) headers.Cookie = headers.Cookie ? `${headers.Cookie}; ${req.cookie}` : req.cookie
+    const res = await undiciFetch(req.url, {
+      method: req.method ?? (req.body ? 'POST' : 'GET'),
+      headers,
+      body: req.body,
+      dispatcher: isCrunchyrollHost(req.url) ? h2Agent : undefined,
+      redirect: 'follow',
+      signal: req.signal ?? (req.timeoutMs && req.timeoutMs > 0 ? AbortSignal.timeout(req.timeoutMs) : undefined),
+    })
+    return {
+      status: res.status,
+      url: res.url,
+      headers: headerRecord(res.headers),
+      body: res.body as unknown as CrStreamResponse['body'],
+    }
   }
 }
 
