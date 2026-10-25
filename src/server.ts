@@ -1,6 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomBytes } from 'node:crypto'
-import { once } from 'node:events'
 import { networkInterfaces } from 'node:os'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -50,7 +49,33 @@ function sendMedia(res: ServerResponse, fetched: { status: number; contentType: 
   res.end(fetched.body)
 }
 
-async function sendMediaStream(
+/** How long the upstream may go silent mid-body before the proxy gives up on it. */
+export const MEDIA_IDLE_MS = 20_000
+
+/** Resolves on 'drain', or once the client has gone (then 'drain' never comes). */
+function drainedOrGone(res: ServerResponse, gone: () => boolean): Promise<void> {
+  if (gone()) return Promise.resolve()
+  return new Promise((resolve) => {
+    const done = () => {
+      res.off('drain', done)
+      res.off('close', done)
+      resolve()
+    }
+    res.on('drain', done)
+    res.on('close', done)
+  })
+}
+
+/** The next chunk, or a rejection when the upstream has been silent for `idleMs`. */
+function readWithin<T>(read: Promise<T>, idleMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const idle = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`upstream sent nothing for ${idleMs / 1000} s`)), idleMs)
+  })
+  return Promise.race([read, idle]).finally(() => clearTimeout(timer))
+}
+
+export async function sendMediaStream(
   res: ServerResponse,
   fetched: {
     status: number
@@ -58,11 +83,13 @@ async function sendMediaStream(
     body: {
       getReader(): {
         read(): Promise<{ done: boolean; value?: Uint8Array }>
+        cancel?(reason?: unknown): Promise<void>
         releaseLock(): void
       }
     } | Buffer | null
     headers: Record<string, string>
   },
+  idleMs = MEDIA_IDLE_MS,
 ): Promise<void> {
   // A transport without streaming support falls back to the existing buffered response.
   if (Buffer.isBuffer(fetched.body)) {
@@ -79,23 +106,34 @@ async function sendMediaStream(
   for (const name of ['content-length', 'content-range', 'accept-ranges']) {
     if (fetched.headers[name]) headers[name] = fetched.headers[name]
   }
+  // The client may leave at any point. A response it abandoned is not necessarily `destroyed`, and
+  // its 'close' fires once, so remember it rather than waiting for an event that already happened.
+  let closed = false
+  res.once('close', () => { closed = true })
+  const gone = () => closed || res.destroyed
   res.writeHead(fetched.status, headers)
   if (!fetched.body) {
     res.end()
     return
   }
   const reader = fetched.body.getReader()
+  let finished = false
   try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      if (res.destroyed) break
-      if (value && !res.write(value)) await once(res, 'drain')
+    while (!gone()) {
+      const { done, value } = await readWithin(reader.read(), idleMs)
+      if (done) {
+        finished = true
+        break
+      }
+      if (value && !res.write(value)) await drainedOrGone(res, gone)
     }
-    if (!res.destroyed) res.end()
+    if (!gone()) res.end()
   } catch (error) {
     if (!res.destroyed) res.destroy(error instanceof Error ? error : new Error(String(error)))
   } finally {
+    // A body left half-read holds its upstream HTTP/2 stream and flow-control window; enough of
+    // those and every later media request on the connection stalls. Cancel what wasn't read.
+    if (!finished) await reader.cancel?.().catch(() => {})
     reader.releaseLock()
   }
 }
