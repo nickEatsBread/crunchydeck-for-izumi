@@ -4,6 +4,9 @@
 // it after building the packages (dist/crunchyroll-<platform>.izumi-ext).
 //
 //   IZUMI_REPO=owner/repo IZUMI_REF=main node scripts/build-izumi-store.mjs
+//
+// Hosting somewhere else (a test server, a mirror): IZUMI_BASE_URL is where the izumi/ files are
+// served and IZUMI_PACKAGES_URL where the packages are (defaults: GitHub raw and the release).
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -14,8 +17,8 @@ const dist = join(root, 'dist')
 const repo = process.env.IZUMI_REPO || 'nickEatsBread/crunchydeck-for-izumi'
 const ref = process.env.IZUMI_REF || 'main'
 const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
-const raw = `https://raw.githubusercontent.com/${repo}/${ref}/izumi`
-const release = `https://github.com/${repo}/releases/download/v${version}`
+const raw = (process.env.IZUMI_BASE_URL || `https://raw.githubusercontent.com/${repo}/${ref}/izumi`).replace(/\/+$/, '')
+const release = (process.env.IZUMI_PACKAGES_URL || `https://github.com/${repo}/releases/download/v${version}`).replace(/\/+$/, '')
 
 const file = (path) => {
   const bytes = readFileSync(path)

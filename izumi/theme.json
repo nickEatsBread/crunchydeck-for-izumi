@@ -29,7 +29,7 @@
       "theme": "24 90% 54%"
     },
     "radius": 0.25,
-    "font": "system",
+    "font": "nunito",
     "fontScale": 1,
     "backdrop": "solid",
     "backdropStrength": 0,
