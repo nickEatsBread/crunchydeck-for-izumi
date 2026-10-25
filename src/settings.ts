@@ -1,4 +1,4 @@
-import type { AccountStatus, DeviceCode, DeviceFlowState } from './cr/auth.js'
+import type { AccountStatus, CrProfile, DeviceCode, DeviceFlowState } from './cr/auth.js'
 
 export type ServiceSettingValue = string | number | boolean | null
 
@@ -44,6 +44,8 @@ export interface ServiceSettingsDocument {
   description: string
   notice?: ServiceSettingsNotice
   refreshAfterMs?: number
+  /** Signed in with a profile chosen: izumi's pack setup can move on. */
+  complete?: boolean
   fields: ServiceSettingField[]
   values: Record<string, ServiceSettingValue>
 }
@@ -62,10 +64,20 @@ export interface SettingsAccount {
   loginPassword(username: string, password: string): Promise<AccountStatus>
   requestDeviceCode(): Promise<DeviceCode>
   logout(): void
+  /** Optional so plain test accounts need not model profiles. */
+  profileChosen?(): boolean
+  switchProfile?(profileId: string): Promise<AccountStatus>
 }
 
-function accountActions(status: AccountStatus): ServiceSettingOption[] {
+function accountActions(status: AccountStatus, profiles: CrProfile[]): ServiceSettingOption[] {
   return [
+    ...(status.authenticated && profiles.length > 1 ? [{
+      value: 'profile',
+      label: "Choose who's watching",
+      description: 'Switch to another profile on this Crunchyroll account.',
+      submitLabel: 'Use this profile',
+      submittingLabel: 'Switching…',
+    }] : []),
     ...(status.authenticated ? [{
       value: 'keep',
       label: 'Keep current account',
@@ -111,11 +123,11 @@ function loginLabel(login: AccountStatus['login']): string {
   return 'no saved login'
 }
 
-function description(status: AccountStatus): string {
+function description(status: AccountStatus, profile?: CrProfile): string {
   if (!status.authenticated) {
     return 'Not signed in. Choose a sign-in method below; a Crunchyroll account is required.'
   }
-  const identity = status.accountId ? ` as ${status.accountId}` : ''
+  const identity = profile ? ` as ${profile.name}` : status.accountId ? ` as ${status.accountId}` : ''
   const country = status.country ? ` (${status.country})` : ''
   return `Signed in${identity}${country} using ${loginLabel(status.login)}. Credentials are never shown here.`
 }
@@ -151,23 +163,49 @@ function flowNotice(flow: DeviceFlowState): ServiceSettingsNotice | undefined {
   return undefined
 }
 
-export function serviceSettings(account: Pick<SettingsAccount, 'status' | 'deviceStatus'>): ServiceSettingsDocument {
+export function serviceSettings(
+  account: Pick<SettingsAccount, 'status' | 'deviceStatus' | 'profileChosen'>,
+  profiles: CrProfile[] = [],
+): ServiceSettingsDocument {
   const status = account.status()
   const flow = account.deviceStatus()
-  const accountAction = flow.status === 'waiting' ? 'device' : status.authenticated ? 'keep' : 'device'
+  const current = profiles.find((profile) => profile.selected)
+  // Like the TV app: after signing in to an account with several profiles, ask who's watching.
+  const choosing = status.authenticated && profiles.length > 1 && !account.profileChosen?.()
+  const accountAction = flow.status === 'waiting' ? 'device' : choosing ? 'profile' : status.authenticated ? 'keep' : 'device'
   return {
     version: 1,
     title: 'Crunchyroll settings',
-    description: description(status),
-    notice: flowNotice(flow),
+    description: description(status, current),
+    notice: choosing && flow.status !== 'waiting'
+      ? {
+          tone: 'info',
+          title: "Who's watching?",
+          message: 'Pick the profile izumi should use. You can change it here later.',
+          visibleWhen: { key: 'accountAction', equals: 'profile' },
+        }
+      : flowNotice(flow),
     refreshAfterMs: flow.status === 'waiting' ? 1_000 : undefined,
+    complete: status.authenticated && !choosing && flow.status !== 'waiting',
     fields: [
       {
         key: 'accountAction',
         label: 'Account action',
         type: 'select',
         role: 'action',
-        options: accountActions(status),
+        options: accountActions(status, profiles),
+      },
+      {
+        key: 'profileId',
+        label: 'Profile',
+        type: 'select',
+        visibleWhen: { key: 'accountAction', equals: 'profile' },
+        required: true,
+        options: profiles.map((profile) => ({
+          value: profile.id,
+          label: profile.name,
+          description: profile.selected ? 'Current profile' : undefined,
+        })),
       },
       {
         key: 'etpRt',
@@ -197,7 +235,7 @@ export function serviceSettings(account: Pick<SettingsAccount, 'status' | 'devic
     ],
     // Secrets are deliberately write-only: opening or saving the dialog never echoes a token or
     // password out of the service process and into the WebView.
-    values: { accountAction, etpRt: '', username: '', password: '' },
+    values: { accountAction, profileId: current?.id ?? '', etpRt: '', username: '', password: '' },
   }
 }
 
@@ -210,29 +248,39 @@ function value(values: Record<string, unknown>, key: string): string {
   return rawValue(values, key).trim()
 }
 
-function result(account: SettingsAccount, message: string): ServiceSettingsResult {
-  return { ...serviceSettings(account), ok: true, message }
+function result(account: SettingsAccount, message: string, profiles?: CrProfile[]): ServiceSettingsResult {
+  return { ...serviceSettings(account, profiles), ok: true, message }
 }
 
 export async function saveServiceSettings(
   account: SettingsAccount,
   values: Record<string, unknown>,
+  /** Reads the account's profiles after a change (the HTTP handler passes the app's cache). */
+  profiles: () => Promise<CrProfile[] | undefined> = async () => undefined,
 ): Promise<ServiceSettingsResult> {
+  const after = async (message: string) => result(account, message, await profiles().catch(() => undefined))
   switch (value(values, 'accountAction') || 'keep') {
     case 'keep':
-      return result(account, 'No account changes were made.')
+      return after('No account changes were made.')
+    case 'profile': {
+      const profileId = value(values, 'profileId')
+      if (!profileId) throw new Error('Choose a profile.')
+      if (!account.switchProfile) throw new Error('This account cannot switch profiles.')
+      await account.switchProfile(profileId)
+      return after('Profile switched.')
+    }
     case 'cookie': {
       const etpRt = value(values, 'etpRt')
       if (!etpRt) throw new Error('Paste the etp_rt browser cookie before saving.')
       await account.loginEtpRt(etpRt)
-      return result(account, 'Signed in to Crunchyroll with the browser cookie.')
+      return after('Signed in to Crunchyroll with the browser cookie.')
     }
     case 'password': {
       const username = value(values, 'username')
       const password = rawValue(values, 'password')
       if (!username || !password.trim()) throw new Error('Enter both the Crunchyroll email and password before saving.')
       await account.loginPassword(username, password)
-      return result(account, 'Signed in to Crunchyroll with email and password.')
+      return after('Signed in to Crunchyroll with email and password.')
     }
     case 'device': {
       await account.requestDeviceCode()

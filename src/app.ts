@@ -1,4 +1,4 @@
-import { Auth, type AccountStatus, type DeviceCode, type DeviceFlowState } from './cr/auth.js'
+import { Auth, type AccountStatus, type CrProfile, type DeviceCode, type DeviceFlowState } from './cr/auth.js'
 import { Catalog, type EpisodeHit, type SearchHit } from './cr/catalog.js'
 import { tryChromeTransport } from './cr/chrome.js'
 import { FetchTransport, type CrTransport } from './cr/http.js'
@@ -106,6 +106,30 @@ export class CrunchyrollApp {
 
   logout(): void {
     this.auth.logout()
+    this.profileCache = undefined
+  }
+
+  private profileCache: { at: number; profiles: CrProfile[] } | undefined
+
+  /** The account's profiles, cached for half a minute; undefined when signed out. */
+  async accountProfiles(): Promise<CrProfile[] | undefined> {
+    if (!this.auth.status().authenticated) return undefined
+    if (this.profileCache && Date.now() - this.profileCache.at < 30_000) return this.profileCache.profiles
+    const profiles = await this.auth.profiles()
+    this.profileCache = { at: Date.now(), profiles }
+    // One profile: nothing to choose.
+    if (profiles.length <= 1) this.auth.markProfileChosen()
+    return profiles
+  }
+
+  profileChosen(): boolean {
+    return this.auth.profileChosen
+  }
+
+  async switchProfile(profileId: string): Promise<AccountStatus> {
+    const status = await this.auth.switchProfile(profileId)
+    this.profileCache = undefined
+    return status
   }
 
   search(query: string, dub: boolean, year?: number): Promise<SearchHit[]> {

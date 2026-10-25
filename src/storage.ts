@@ -16,6 +16,8 @@ export interface SessionFile {
   deviceId: string
   accountId?: string
   profileId?: string
+  /** Set once the user has picked a profile (or the account only has one). */
+  profileChosen?: boolean
   country?: string
   accessToken?: string
   accessExpiresAt?: number

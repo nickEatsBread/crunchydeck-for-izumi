@@ -44,6 +44,13 @@ interface TokenJson {
   error?: string
 }
 
+/** One of the account's profiles ("who's watching"). */
+export interface CrProfile {
+  id: string
+  name: string
+  selected: boolean
+}
+
 export interface DeviceCode {
   deviceCode: string
   userCode: string
@@ -154,6 +161,56 @@ export class Auth {
 
   deviceStatus(): DeviceFlowState {
     return { ...this.deviceFlow, authenticated: this.deviceFlow.status === 'ok' ? this.status() : undefined }
+  }
+
+  get profileChosen(): boolean {
+    return !!this.session.profileChosen
+  }
+
+  /** The account's profiles. The current one is marked selected. */
+  async profiles(): Promise<CrProfile[]> {
+    const token = await this.accessToken()
+    const profile = this.session.profile
+    const res = await this.transport.request({
+      url: `${tokenHost(profile)}/accounts/v1/me/multiprofile`,
+      headers: crHeaders({ profile, authorization: `Bearer ${token}` }),
+    })
+    const json = await jsonOrThrow<{ profiles?: Array<{ profile_id?: string; profile_name?: string; username?: string; is_selected?: boolean }> }>(res)
+    const current = this.session.profileId ?? this.tokens?.profileId
+    return (json.profiles ?? [])
+      .filter((item) => item.profile_id)
+      .map((item) => ({
+        id: item.profile_id!,
+        name: item.profile_name || item.username || 'Profile',
+        selected: current ? item.profile_id === current : !!item.is_selected,
+      }))
+  }
+
+  /** Re-mints the session for another profile of the same account. TV sign-ins only: the web
+   *  cookie grant has no refresh token to redeem. */
+  async switchProfile(profileId: string): Promise<AccountStatus> {
+    if (!profileId) throw new Error('Choose a profile.')
+    if (this.session.profile !== 'tv' || !this.session.refreshToken) {
+      throw new Error('Profiles can be switched after signing in with a TV code or email and password.')
+    }
+    const json = await this.tokenRequest('tv', {
+      grant_type: 'refresh_token_profile_id',
+      refresh_token: this.session.refreshToken,
+      profile_id: profileId,
+      scope: 'offline_access',
+      device_id: this.session.deviceId,
+      device_type: DEVICE.tv.type,
+    })
+    this.adopt(json, 'tv')
+    this.markProfileChosen()
+    return this.status()
+  }
+
+  /** Records that the profile question is settled (picked, or only one profile exists). */
+  markProfileChosen(): void {
+    if (this.session.profileChosen) return
+    this.session.profileChosen = true
+    saveSession(this.session)
   }
 
   logout(): void {

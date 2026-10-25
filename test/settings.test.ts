@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import type { CrunchyrollApp } from '../src/app.js'
-import type { AccountStatus, DeviceCode, DeviceFlowState } from '../src/cr/auth.js'
+import type { AccountStatus, CrProfile, DeviceCode, DeviceFlowState } from '../src/cr/auth.js'
 import { CRUNCHYROLL_ICON } from '../src/brand.js'
 import { listen } from '../src/server.js'
 import {
@@ -63,6 +63,19 @@ class FakeAccount implements SettingsAccount {
     this.flow = { status: 'idle' }
     this.current = { ...this.current, authenticated: false, login: 'none', accountId: undefined }
   }
+  profileList: CrProfile[] = []
+  chosen = false
+  switchedTo = ''
+  profileChosen(): boolean { return this.chosen }
+  async accountProfiles(): Promise<CrProfile[] | undefined> {
+    return this.current.authenticated ? this.profileList : undefined
+  }
+  async switchProfile(profileId: string): Promise<AccountStatus> {
+    this.switchedTo = profileId
+    this.chosen = true
+    this.profileList = this.profileList.map((profile) => ({ ...profile, selected: profile.id === profileId }))
+    return this.current
+  }
 }
 
 test('manifest artwork uses the Crunchyroll eye mark', () => {
@@ -77,7 +90,8 @@ test('native settings are a reactive version-one write-only account form', () =>
   assert.equal(document.version, 1)
   assert.equal(document.title, 'Crunchyroll settings')
   assert.match(document.description, /Not signed in/)
-  assert.deepEqual(document.values, { accountAction: 'device', etpRt: '', username: '', password: '' })
+  assert.deepEqual(document.values, { accountAction: 'device', profileId: '', etpRt: '', username: '', password: '' })
+  assert.equal(document.complete, false)
   const action = document.fields.find((field) => field.key === 'accountAction')
   assert.equal(action?.role, 'action')
   assert.equal(action?.options?.find((option) => option.value === 'device')?.submitLabel, 'Get TV code')
@@ -92,8 +106,31 @@ test('signed-in settings default to a no-op and expose an explicit destructive s
   await account.loginEtpRt('cookie-secret')
   const document = serviceSettings(account)
   assert.equal(document.values.accountAction, 'keep')
+  assert.equal(document.complete, true)
   assert.equal(document.fields[0]?.options?.find((option) => option.value === 'keep')?.hideSubmit, true)
   assert.equal(document.fields[0]?.options?.find((option) => option.value === 'logout')?.intent, 'danger')
+})
+
+test('an account with several profiles asks who is watching before it counts as set up', async () => {
+  const account = new FakeAccount()
+  await account.loginPassword('me@example.com', 'secret')
+  account.profileList = [
+    { id: 'p1', name: 'Nico', selected: true },
+    { id: 'p2', name: 'Kids', selected: false },
+  ]
+  const asking = serviceSettings(account, account.profileList)
+  assert.equal(asking.values.accountAction, 'profile')
+  assert.equal(asking.complete, false)
+  assert.equal(asking.notice?.title, "Who's watching?")
+  assert.deepEqual(asking.fields.find((field) => field.key === 'profileId')?.options?.map((option) => option.label), ['Nico', 'Kids'])
+  assert.match(asking.description, /as Nico/)
+
+  const saved = await saveServiceSettings(account, { accountAction: 'profile', profileId: 'p2' }, () => account.accountProfiles())
+  assert.equal(account.switchedTo, 'p2')
+  assert.equal(saved.complete, true)
+  assert.equal(saved.values.accountAction, 'keep')
+  assert.match(saved.description, /as Kids/)
+  await assert.rejects(saveServiceSettings(account, { accountAction: 'profile', profileId: '' }), /Choose a profile/)
 })
 
 test('native settings handle cookie login without echoing the secret', async () => {
@@ -168,4 +205,14 @@ test('the sidecar exposes Izumi settings over the managed-service HTTP contract'
   const manifest = await (await fetch(`${account.baseUrl}/index.json`)).json() as { icon?: string; version?: string }
   assert.equal(manifest.icon, CRUNCHYROLL_ICON)
   assert.equal(manifest.version, '0.1.2')
+
+  // Another web page can't sign the account out, and izumi's own webview gets a CORS answer.
+  const forged = await fetch(`${account.baseUrl}/__izumi/settings`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: 'https://evil.example' },
+    body: JSON.stringify({ values: { accountAction: 'logout' } }),
+  })
+  assert.equal(forged.status, 403)
+  const fromIzumi = await fetch(`${account.baseUrl}/index.json`, { headers: { origin: 'tauri://localhost' } })
+  assert.equal(fromIzumi.headers.get('access-control-allow-origin'), 'tauri://localhost')
 })

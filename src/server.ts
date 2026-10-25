@@ -13,6 +13,7 @@ import { DEFAULT_PORT } from './cr/constants.js'
 import { loadOrCreateShareToken } from './storage.js'
 import { CRUNCHYROLL_ICON } from './brand.js'
 import { saveServiceSettings, serviceSettings } from './settings.js'
+import { localAccess } from './access.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 let embeddedUiHtml: string | undefined
@@ -30,10 +31,6 @@ function send(res: ServerResponse, status: number, body: unknown, type = 'applic
   res.writeHead(status, {
     'content-type': type,
     'cache-control': 'no-store',
-    'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'content-type, authorization, origin, range',
-    'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS',
-    'access-control-allow-private-network': 'true',
   })
   res.end(payload)
 }
@@ -45,7 +42,6 @@ function sendMedia(res: ServerResponse, fetched: { status: number; contentType: 
   const headers: Record<string, string> = {
     'content-type': type,
     'cache-control': 'no-store',
-    'access-control-allow-origin': '*',
     'content-length': String(fetched.body.length),
   }
   if (fetched.headers['content-range']) headers['content-range'] = fetched.headers['content-range']
@@ -79,7 +75,6 @@ async function sendMediaStream(
     // WebView reuse init/recent media across rapid seeks instead of returning
     // to CloudFront for the same immutable bytes.
     'cache-control': fetched.status < 400 ? 'private, max-age=600' : 'no-store',
-    'access-control-allow-origin': '*',
   }
   for (const name of ['content-length', 'content-range', 'accept-ranges']) {
     if (fetched.headers[name]) headers[name] = fetched.headers[name]
@@ -238,6 +233,24 @@ async function handle(
     send(res, 403, { error: 'A valid Watch Together playback capability is required.' })
     return
   }
+  // A share capability is the token in its path, so any origin may use it. A local request must come
+  // from izumi on a loopback host (see access.ts).
+  let corsOrigin = '*'
+  if (scope === 'local') {
+    const access = localAccess(req.headers, url.pathname)
+    if (!access.ok) {
+      send(res, 403, { error: access.reason })
+      return
+    }
+    corsOrigin = access.corsOrigin ?? ''
+  }
+  if (corsOrigin) {
+    res.setHeader('access-control-allow-origin', corsOrigin)
+    res.setHeader('access-control-allow-headers', 'content-type, authorization, origin, range')
+    res.setHeader('access-control-allow-methods', 'GET,POST,DELETE,OPTIONS')
+    res.setHeader('access-control-allow-private-network', 'true')
+    if (corsOrigin !== '*') res.setHeader('vary', 'origin')
+  }
   const remoteBase = scope === 'party' ? app.partyBaseUrl : scope === 'android' ? app.shareBaseUrl : app.baseUrl
   if (scope === 'party' && !(
     url.pathname.startsWith('/v/')
@@ -303,7 +316,7 @@ async function handle(
       return
     }
     if (req.method === 'GET' && url.pathname === '/__izumi/settings') {
-      send(res, 200, serviceSettings(app))
+      send(res, 200, serviceSettings(app, await app.accountProfiles().catch(() => undefined)))
       return
     }
     if (req.method === 'POST' && url.pathname === '/__izumi/settings') {
@@ -312,7 +325,7 @@ async function handle(
       if (!values || typeof values !== 'object' || Array.isArray(values)) {
         throw new Error('Crunchyroll settings values must be an object.')
       }
-      send(res, 200, await saveServiceSettings(app, values as Record<string, unknown>))
+      send(res, 200, await saveServiceSettings(app, values as Record<string, unknown>, () => app.accountProfiles()))
       return
     }
     if (req.method === 'POST' && url.pathname === '/api/login/etp') {
@@ -380,8 +393,6 @@ async function handle(
       res.writeHead(200, {
         'content-type': 'application/octet-stream',
         'cache-control': 'no-store',
-        'access-control-allow-origin': '*',
-        'access-control-allow-private-network': 'true',
         'content-length': String(body.length),
       })
       res.end(body)
