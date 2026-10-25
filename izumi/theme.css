@@ -370,9 +370,39 @@
   background: rgb(255 255 255 / 0.25);
 }
 [data-part="cd-ep-progress"] > span { background: var(--cd-brand); }
+/* Crunchy Deck's selected episode: a dark veil with a round play (or replay) button. */
+[data-part="cd-ep-hover"] { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(0 0 0 / 0.35); opacity: 0; transition: opacity 150ms; }
+[data-part="episode"]:is(:focus-visible, :hover) [data-part="cd-ep-hover"] { opacity: 1; }
+[data-part="cd-ep-play"] { display: grid; width: calc(48 * var(--cd)); height: calc(48 * var(--cd)); place-items: center; border-radius: 9999px; background: rgb(0 0 0 / 0.6); color: #fff; font-size: calc(20 * var(--cd)); line-height: 1; }
+/* Downloads: the status over the artwork's corner, progress along its bottom like the watch bar. */
+[data-part="episode"][data-variant="template"] [data-part="episode.saved"] { border-radius: calc(12 * var(--cd)); }
+[data-part="episode.saved.icon"] { top: calc(8 * var(--cd)); left: calc(8 * var(--cd)); width: calc(28 * var(--cd)); height: calc(28 * var(--cd)); background: rgb(0 0 0 / 0.75); color: #fff; }
+[data-part="episode.saved"][data-state="done"] [data-part="episode.saved.icon"] { color: var(--cd-brand); }
+[data-part="episode.saved.progress"] { height: calc(4 * var(--cd)); background: rgb(255 255 255 / 0.25); }
+[data-part="episode.saved.progress"] > span { background: #fff; }
 [data-part="cd-ep-number"] { margin-top: calc(8 * var(--cd)); gap: 0.25em; color: rgb(255 255 255 / 0.5); font-size: calc(12 * var(--cd)); font-weight: 700; }
 [data-part="cd-ep-title"] { display: -webkit-box; overflow: hidden; font-size: calc(14 * var(--cd)); font-weight: 700; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
 [data-part="cd-ep-synopsis"] { display: -webkit-box; overflow: hidden; color: rgb(255 255 255 / 0.45); font-size: calc(12 * var(--cd)); -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+
+/* ---- Search (Crunchy Deck's: one field, no filters, results as a poster grid) ------------------ */
+[data-slot="search"][data-variant="catalog"] { padding: calc(32 * var(--cd)) calc(40 * var(--cd)) !important; }
+[data-slot="search"] [data-part="search.filter"] { display: none !important; }
+[data-slot="search"] [data-part="search.filters"] { margin-bottom: calc(16 * var(--cd)); }
+[data-slot="search"] [data-part="search.field"] {
+  max-width: calc(576 * var(--cd));
+  height: auto;
+  padding-top: calc(12 * var(--cd));
+  padding-bottom: calc(12 * var(--cd));
+  border: 0;
+  border-radius: calc(12 * var(--cd));
+  background: var(--cd-s2);
+  font-size: calc(18 * var(--cd));
+  outline: none;
+  box-shadow: 0 0 0 2px transparent;
+}
+[data-slot="search"] [data-part="search.field"]:is(:focus, :focus-visible, :hover) { box-shadow: 0 0 0 2px var(--cd-brand); }
+[data-part="search.empty"] { padding: 0; border-radius: 0; background: transparent; color: rgb(255 255 255 / 0.4); font-size: calc(14 * var(--cd)); text-align: left; }
+[data-part="search.empty"][data-state="none"] { color: rgb(255 255 255 / 0.5); }
 
 /* ---- Title page while it loads (Crunchy Deck's series skeleton) ------------------------------- */
 [data-part="detail.skeleton.banner"] { height: 58vh !important; }
@@ -394,7 +424,6 @@
 [data-part="options.item"]:focus-visible [data-part="options.item.icon"] { color: var(--cd-brand); }
 [data-part="options.item.detail"] { font-size: calc(12 * var(--cd)); }
 [data-part="options.hints"] { padding: calc(14 * var(--cd)) calc(24 * var(--cd)); font-size: calc(14 * var(--cd)); }
-[data-part="episode.saved"] { color: var(--cd-brand); }
 
 /* ---- Game mode ----------------------------------------------------------------------------- */
 /* The Deck's WebKitGTK drops a transition's compositor layer when it ends and can paint a frame
@@ -402,5 +431,5 @@
 :scope.gamemode :is([data-slot="nav.drawer"] [data-part="nav.item"], [data-slot="nav.drawer"] [data-part="nav.item.icon"],
   [data-part="nav.drawer.foot"] [data-part="nav.action"], [data-part="cd-hero-art"] img, [data-part="cd-play"], [data-part="cd-details"],
   [data-slot="home.hero"] [data-part="hero.dot.track"], [data-slot="home.hero"] [data-part="hero.edge"], [data-part="card"] > a,
-  [data-part="card.art"]::after, [data-part="season"], [data-part="cd-ep-art"], [data-part="cd-ep-still"] img,
+  [data-part="card.art"]::after, [data-part="season"], [data-part="cd-ep-art"], [data-part="cd-ep-still"] img, [data-part="cd-ep-hover"],
   [data-part="detail.actions"] > [data-action], [data-part="detail.backdrop"]) { transition: none !important; }
