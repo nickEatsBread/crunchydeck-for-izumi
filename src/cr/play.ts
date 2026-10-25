@@ -40,6 +40,10 @@ export interface PlaySession {
   previewCache?: { url: string; contentType: string; body: Buffer }
   /** Cached rewritten MPD so Shaka's extra manifest GETs do not hit Crunchyroll again. */
   rewritten?: { key: string; contentType: string; body: string }
+  /** Set when Izumi stores this session (`manifest.mpd?offline=1`). */
+  offlineDownload?: boolean
+  /** Preferred stored video height from `?height=`. */
+  offlineHeight?: number
   createdAt: number
 }
 

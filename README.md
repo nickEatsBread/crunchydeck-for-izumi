@@ -53,6 +53,10 @@ Keep this process running while you use Izumi.
 
 ### Sign-in options
 
+An installed `.izumi-ext` package exposes these options from its **Settings** button inside Izumi.
+The standalone configuration page remains available at the sidecar address. Tokens and passwords
+are write-only and are never returned to Izumi when the settings dialog is opened again.
+
 | Method | Client | Notes |
 | --- | --- | --- |
 | `etp_rt` cookie | Web | Copy from DevTools → Application → Cookies → `etp_rt`. Lasts until Crunchyroll expires it. |

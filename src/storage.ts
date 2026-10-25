@@ -51,15 +51,25 @@ export function loadOrCreateShareToken(): string {
 }
 
 export function loadSession(): SessionFile | null {
-  try {
-    const raw = readFileSync(sessionPath(), 'utf8')
-    const parsed = JSON.parse(raw) as SessionFile
-    if (!parsed || typeof parsed !== 'object' || !parsed.deviceId) return null
-    if (parsed.profile !== 'tv' && parsed.profile !== 'web') return null
-    return parsed
-  } catch {
-    return null
+  const paths = [sessionPath()]
+  // A managed package gets an isolated host-owned data directory. On its first launch, import the
+  // source's legacy standalone session so installing the package does not unexpectedly sign the
+  // user out. This migration belongs to the source; the generic host never inspects provider data.
+  if (process.env.IZUMI_EXTENSION_DATA_DIR && process.env.CR_SOURCE_DATA) {
+    const legacy = join(homedir(), '.crunchyroll-source-izumi', 'session.json')
+    if (legacy !== paths[0]) paths.push(legacy)
   }
+  for (const path of paths) {
+    try {
+      const raw = readFileSync(path, 'utf8')
+      const parsed = JSON.parse(raw) as SessionFile
+      if (!parsed || typeof parsed !== 'object' || !parsed.deviceId) continue
+      if (parsed.profile !== 'tv' && parsed.profile !== 'web') continue
+      if (path !== paths[0]) saveSession(parsed)
+      return parsed
+    } catch { /* try the next migration location */ }
+  }
+  return null
 }
 
 export function saveSession(session: SessionFile): void {

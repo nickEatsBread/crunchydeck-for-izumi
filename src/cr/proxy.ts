@@ -24,12 +24,26 @@ export function splitCdnBase(raw: string): { base: string; query: string } {
   }
 }
 
+export type MediaMode = 'direct' | 'proxy'
+export interface RewriteOptions {
+  mediaMode?: MediaMode
+  /** Full-file storage: keep one video rung (and one audio) so Shaka cannot
+   *  walk the playback ladder or fetch sidx/init for unused bitrates. */
+  offline?: { maxHeight?: number }
+}
+
+function rewriteOptions(mode: MediaMode | RewriteOptions = 'proxy'): RewriteOptions {
+  if (mode === 'direct' || mode === 'proxy') return { mediaMode: mode }
+  return { mediaMode: mode.mediaMode ?? 'proxy', offline: mode.offline }
+}
+
 export function rewriteManifest(
   xml: string,
   proxyBase: string,
   session: PlaySession,
-  mediaMode: 'direct' | 'proxy' = 'proxy',
+  mediaMode: MediaMode | RewriteOptions = 'proxy',
 ): string {
+  const opts = rewriteOptions(mediaMode)
   const bases = [...xml.matchAll(BASE_URL)].map((match) => match[1] ?? '')
   const cdnBase = bases.find((value) => /^https?:\/\//i.test(value))
   if (cdnBase) {
@@ -44,13 +58,14 @@ export function rewriteManifest(
   if (!session.cdnQuery && templateQuery) session.cdnQuery = templateQuery
   let out = forceStaticVod(xml)
   out = dropImageSets(out)
+  if (opts.offline) out = keepOfflineVideo(out, opts.offline.maxHeight)
   // Direct CDN mode is retained as an explicit experiment. Although these
   // responses advertise CORS, Crunchyroll's edge currently rejects WebView2's
   // media requests; the localhost proxy remains the reliable default.
-  if (mediaMode === 'direct') return out
+  if (opts.mediaMode === 'direct') return out
 
   const cdnProxy = `${proxyBase}/v/${session.id}/cdn/`
-  out = keepAdaptiveLadder(out)
+  if (!opts.offline) out = keepAdaptiveLadder(out)
   out = out.replace(BASE_URL, (_block, raw: string) => {
     const decoded = raw.replace(/&amp;/g, '&').trim()
     try {
@@ -112,6 +127,19 @@ export function keepHighestVideo(xml: string): string {
   })
 }
 
+/** Offline storage should fetch one video encode, not the playback ladder. */
+export function keepOfflineVideo(xml: string, maxHeight?: number): string {
+  return xml.replace(/<AdaptationSet\b[\s\S]*?<\/AdaptationSet>/g, (set) => {
+    if (/mimeType="image\//i.test(set) || /\bcontentType="image"/i.test(set)) return set
+    if (/mimeType="text\//i.test(set) || /\bcontentType="text"/i.test(set)) return set
+    if (/mimeType="audio\//i.test(set) || /\bcontentType="audio"/i.test(set)) {
+      return keepSingleBandwidth(set)
+    }
+    if (!/mimeType="video\//i.test(set) && !/\bcontentType="video"/i.test(set) && !/\bheight="/i.test(set)) return set
+    return keepSingleVideo(set, maxHeight)
+  })
+}
+
 /** Keep one bitrate for each video height and one audio bitrate. Crunchyroll
  * occasionally publishes several encodes at the same resolution; those are
  * the rapid-switch loop that originally drained Shaka every two seconds. A
@@ -161,22 +189,23 @@ function keepSingleBandwidth(set: string): string {
   })
 }
 
-function keepSingleVideo(set: string): string {
+function keepSingleVideo(set: string, maxHeight?: number): string {
   const heights = [...set.matchAll(/\bheight="(\d+)"/g)].map((match) => Number(match[1]))
-  const maxHeight = Math.max(0, ...heights)
-  if (!maxHeight) return set
+  const allowed = maxHeight && maxHeight > 0 ? heights.filter((height) => height <= maxHeight) : heights
+  const targetHeight = Math.max(0, ...(allowed.length ? allowed : heights))
+  if (!targetHeight) return set
   let bestBandwidth = -1
   for (const match of set.matchAll(/<Representation\b[\s\S]*?<\/Representation>/g)) {
     const height = Number(match[0].match(/\bheight="(\d+)"/)?.[1] ?? 0)
     const bandwidth = Number(match[0].match(/\bbandwidth="(\d+)"/)?.[1] ?? 0)
-    if (height === maxHeight && bandwidth > bestBandwidth) bestBandwidth = bandwidth
+    if (height === targetHeight && bandwidth > bestBandwidth) bestBandwidth = bandwidth
   }
   let kept = false
   return set.replace(/<Representation\b[\s\S]*?<\/Representation>/g, (block) => {
     if (!/\bheight="/i.test(block)) return block
     const height = Number(block.match(/\bheight="(\d+)"/)?.[1] ?? 0)
     const bandwidth = Number(block.match(/\bbandwidth="(\d+)"/)?.[1] ?? 0)
-    if (height === maxHeight && bandwidth === bestBandwidth && !kept) {
+    if (height === targetHeight && bandwidth === bestBandwidth && !kept) {
       kept = true
       return block
     }
@@ -215,10 +244,14 @@ export async function loadRewrittenManifest(
   proxyBase: string,
   manifestUrl = session.manifestUrl,
   refresh = true,
+  rewrite: RewriteOptions = {},
 ): Promise<{ contentType: string; body: string }> {
   if (refresh) await play.ensureLiveToken(session)
-  const mediaMode = process.env.CR_MEDIA_DIRECT === '1' ? 'direct' : 'proxy'
-  const key = `${session.id}|${session.manifestUrl}|${manifestUrl}|${proxyBase}|${mediaMode}`
+  const mediaMode = rewrite.mediaMode ?? (process.env.CR_MEDIA_DIRECT === '1' ? 'direct' : 'proxy')
+  const offlineKey = rewrite.offline
+    ? `offline:${rewrite.offline.maxHeight ?? 'max'}`
+    : 'play'
+  const key = `${session.id}|${session.manifestUrl}|${manifestUrl}|${proxyBase}|${mediaMode}|${offlineKey}`
   if (session.rewritten?.key === key) return { contentType: session.rewritten.contentType, body: session.rewritten.body }
   const pending = rewrittenJobs.get(key)
   if (pending) return pending
@@ -235,7 +268,7 @@ export async function loadRewrittenManifest(
       fetched = await play.fetchManifest(session, clean, refresh)
     }
     const contentType = fetched.contentType.includes('mpegurl') ? fetched.contentType : 'application/dash+xml'
-    const body = rewriteManifest(fetched.body, proxyBase, session, mediaMode)
+    const body = rewriteManifest(fetched.body, proxyBase, session, { mediaMode, offline: rewrite.offline })
     session.rewritten = { key, contentType, body }
     return { contentType, body }
   })()

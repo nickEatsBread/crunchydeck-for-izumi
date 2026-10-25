@@ -181,6 +181,7 @@ export class CrunchyrollApp {
           keySystem: 'com.widevine.alpha',
           licenseUrl: `${baseUrl}/v/${session.id}/license`,
           releaseUrl: includeRelease ? `${baseUrl}/v/${session.id}/session` : undefined,
+          refreshUrl: `${baseUrl}/v/${session.id}/source`,
           videoRobustness: 'SW_SECURE_CRYPTO',
           audioRobustness: 'SW_SECURE_CRYPTO',
         }

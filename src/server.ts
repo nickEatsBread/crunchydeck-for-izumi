@@ -8,18 +8,22 @@ import { fileURLToPath } from 'node:url'
 import type { CrunchyrollApp } from './app.js'
 import { CrError } from './cr/errors.js'
 import { loadRewrittenManifest, resolveCdnUrl } from './cr/proxy.js'
+import { mediaCacheKey, mediaGateway, nextSegmentUrl, type FetchedMedia } from './cr/media-fetch.js'
 import { DEFAULT_PORT } from './cr/constants.js'
 import { loadOrCreateShareToken } from './storage.js'
+import { CRUNCHYROLL_ICON } from './brand.js'
+import { saveServiceSettings, serviceSettings } from './settings.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const uiHtml = () => readFileSync(join(here, 'ui', 'index.html'), 'utf8')
-const providerSrc = () => readFileSync(join(here, 'izumi', 'provider.js'), 'utf8')
+let embeddedUiHtml: string | undefined
+let embeddedProviderSrc: string | undefined
+const uiHtml = () => embeddedUiHtml ?? readFileSync(join(here, 'ui', 'index.html'), 'utf8')
+const providerSrc = () => embeddedProviderSrc ?? readFileSync(join(here, 'izumi', 'provider.js'), 'utf8')
 
-const ICON =
-  'data:image/svg+xml;utf8,' +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#f47521"/><path fill="#fff" d="M18 32c0-9 7-16 16-16 5 0 9 2 12 5l-6 6c-1-2-4-3-6-3-5 0-8 4-8 8s3 8 8 8c2 0 5-1 6-3l6 6c-3 3-7 5-12 5-9 0-16-7-16-16z"/></svg>',
-  )
+export function setEmbeddedAssets(ui: string, provider: string): void {
+  embeddedUiHtml = ui
+  embeddedProviderSrc = provider
+}
 
 function send(res: ServerResponse, status: number, body: unknown, type = 'application/json; charset=utf-8'): void {
   const payload = typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body)
@@ -112,9 +116,34 @@ async function proxyMediaStream(
   const cancel = () => abort.abort()
   req.once('aborted', cancel)
   res.once('close', cancel)
-  const range = typeof req.headers.range === 'string' ? { Range: req.headers.range } : undefined
-  const fetched = await app.play.fetchStream(session, target, range, abort.signal)
+  const rangeHeader = typeof req.headers.range === 'string' ? req.headers.range : undefined
+  const range = rangeHeader ? { Range: rangeHeader } : undefined
+  // Playback keeps the streaming path. Offline storage already waits for each
+  // whole fragment, so coalescing/caching there cannot add startup latency.
+  const fetched = session.offlineDownload
+    ? await loadOfflineMedia(app, session, target, range, abort.signal)
+    : await app.play.fetchStream(session, target, range, abort.signal)
   await sendMediaStream(res, fetched)
+  if (session.offlineDownload && !rangeHeader && fetched.status < 400) {
+    const next = nextSegmentUrl(target)
+    if (next) void loadOfflineMedia(app, session, next).catch(() => {})
+  }
+}
+
+async function loadOfflineMedia(
+  app: CrunchyrollApp,
+  session: NonNullable<ReturnType<CrunchyrollApp['session']>>,
+  target: string,
+  range?: { Range: string },
+  signal?: AbortSignal,
+): Promise<FetchedMedia> {
+  const rangeHeader = range?.Range
+  const key = mediaCacheKey(`${session.id}:${target}`, rangeHeader)
+  return mediaGateway.fetch(
+    key,
+    () => app.play.fetchStream(session, target, range, signal),
+    { cache: !rangeHeader },
+  )
 }
 
 function readBinaryBody(req: IncomingMessage): Promise<Buffer> {
@@ -166,11 +195,15 @@ function isLoopback(req: IncomingMessage): boolean {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1'
 }
 
-export function listen(app: CrunchyrollApp, port = DEFAULT_PORT): Promise<{ port: number; close: () => Promise<void> }> {
+export function listen(
+  app: CrunchyrollApp,
+  port = DEFAULT_PORT,
+  onManagedShutdown?: () => void,
+): Promise<{ port: number; close: () => Promise<void> }> {
   const shareToken = loadOrCreateShareToken()
   const partyToken = randomBytes(24).toString('base64url')
   const server = createServer((req, res) => {
-    void handle(app, req, res, shareToken, partyToken)
+    void handle(app, req, res, shareToken, partyToken, onManagedShutdown)
   })
   return new Promise((resolve, reject) => {
     server.on('error', reject)
@@ -195,6 +228,7 @@ async function handle(
   res: ServerResponse,
   shareToken: string,
   partyToken: string,
+  onManagedShutdown?: () => void,
 ): Promise<void> {
   const url = new URL(req.url ?? '/', app.baseUrl)
   const shared = url.pathname.match(/^\/share\/([^/]+)(\/.*)$/)
@@ -224,7 +258,8 @@ async function handle(
     send(res, 403, { error: 'This playback capability cannot manage the Crunchyroll account.' })
     return
   }
-  if (url.pathname !== '/favicon.ico') {
+  const noisyMedia = /\/v\/[^/]+\/(cdn\/|asset$)/.test(url.pathname)
+  if (url.pathname !== '/favicon.ico' && !noisyMedia) {
     const query = url.search.length && url.search.length < 64 ? url.search : ''
     console.log(`[http] ${req.method} ${url.pathname}${query}`)
   }
@@ -241,11 +276,11 @@ async function handle(
       send(res, 200, {
         id: 'crunchyroll.izumi',
         name: 'Crunchyroll',
-        version: '0.1.0',
+        version: '0.1.2',
         type: 'onlinestream-provider',
         lang: 'en',
         description: 'Crunchyroll account source. Requires your Crunchyroll login.',
-        icon: ICON,
+        icon: CRUNCHYROLL_ICON,
         main: 'provider.js',
       })
       return
@@ -260,6 +295,24 @@ async function handle(
         manifestUrl: `${remoteBase}/index.json`,
         androidManifestUrl: app.shareBaseUrl ? `${app.shareBaseUrl}/index.json` : undefined,
       })
+      return
+    }
+    if (req.method === 'POST' && url.pathname === '/__izumi/shutdown' && onManagedShutdown) {
+      send(res, 200, { ok: true })
+      setImmediate(onManagedShutdown)
+      return
+    }
+    if (req.method === 'GET' && url.pathname === '/__izumi/settings') {
+      send(res, 200, serviceSettings(app))
+      return
+    }
+    if (req.method === 'POST' && url.pathname === '/__izumi/settings') {
+      const body = await jsonBody(req)
+      const values = body.values
+      if (!values || typeof values !== 'object' || Array.isArray(values)) {
+        throw new Error('Crunchyroll settings values must be an object.')
+      }
+      send(res, 200, await saveServiceSettings(app, values as Record<string, unknown>))
       return
     }
     if (req.method === 'POST' && url.pathname === '/api/login/etp') {
@@ -368,7 +421,18 @@ async function handle(
       if (audio) session = await app.play.ensureAudio(session, audio)
       const hard = url.searchParams.get('hard')
       const alt = hard ? session.hardSubs.find((track) => track.language === hard)?.url : undefined
-      const rewritten = await loadRewrittenManifest(app.play, session, remoteBase, alt)
+      const offline = url.searchParams.get('offline') === '1'
+      const heightRaw = Number(url.searchParams.get('height'))
+      const maxHeight = Number.isFinite(heightRaw) && heightRaw > 0 ? heightRaw : undefined
+      session.offlineDownload = offline
+      session.offlineHeight = maxHeight
+      const rewritten = await loadRewrittenManifest(app.play, session, remoteBase, alt, true, {
+        offline: offline ? { maxHeight } : undefined,
+      })
+      if (offline) {
+        const heights = [...rewritten.body.matchAll(/\bheight="(\d+)"/g)].map((match) => match[1])
+        console.log(`[http] offline manifest heights=${heights.join(',') || 'none'} max=${maxHeight ?? 'auto'}`)
+      }
       send(res, 200, rewritten.body, rewritten.contentType)
       return
     }

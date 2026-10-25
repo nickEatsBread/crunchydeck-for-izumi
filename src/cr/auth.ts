@@ -171,6 +171,9 @@ export class Auth {
   async loginEtpRt(etpRt: string): Promise<AccountStatus> {
     const value = etpRt.trim()
     if (!value) throw new Error('etp_rt cookie is empty')
+    this.stopDevicePoll()
+    this.deviceCode = null
+    this.deviceFlow = { status: 'idle' }
     this.session.profile = 'web'
     this.session.etpRt = value
     this.session.refreshToken = undefined
@@ -181,6 +184,9 @@ export class Auth {
   }
 
   async loginPassword(username: string, password: string): Promise<AccountStatus> {
+    this.stopDevicePoll()
+    this.deviceCode = null
+    this.deviceFlow = { status: 'idle' }
     this.session.profile = 'tv'
     this.session.etpRt = undefined
     this.loginKind = 'password'
@@ -442,5 +448,4 @@ function parseJsonBody(res: CrResponse): TokenJson | undefined {
     return undefined
   }
 }
-
 

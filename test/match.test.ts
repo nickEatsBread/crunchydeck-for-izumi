@@ -8,7 +8,7 @@ import {
   seasonTitleVariants,
   yearMatches,
 } from '../src/cr/match.js'
-import { dropImageSets, forceStaticVod, initialPlaybackUrl, keepAdaptiveLadder, keepHighestVideo, resolveCdnUrl, rewriteManifest, splitCdnBase } from '../src/cr/proxy.js'
+import { dropImageSets, forceStaticVod, initialPlaybackUrl, keepAdaptiveLadder, keepHighestVideo, keepOfflineVideo, resolveCdnUrl, rewriteManifest, splitCdnBase } from '../src/cr/proxy.js'
 import { firstPreviewUrl, PlayService, versionsOf, type PlaySession } from '../src/cr/play.js'
 import { cdnHeaders, crHeaders, isCdnUrl, isCrunchyrollHost, mediaHeaders } from '../src/cr/headers.js'
 import { makeResponse, type CrRequest, type CrTransport } from '../src/cr/http.js'
@@ -527,4 +527,45 @@ test('keepAdaptiveLadder keeps one bitrate per height and one audio bitrate', ()
   assert.match(out, /id="720"/)
   assert.doesNotMatch(out, /a64/)
   assert.match(out, /a128/)
+})
+
+test('keepOfflineVideo stores one video height so a download cannot walk the ladder', () => {
+  const xml = '<MPD><AdaptationSet mimeType="video/mp4">'
+    + '<Representation id="1080-high" height="1080" bandwidth="9000000"></Representation>'
+    + '<Representation id="720" height="720" bandwidth="4000000"></Representation>'
+    + '<Representation id="480" height="480" bandwidth="1500000"></Representation>'
+    + '</AdaptationSet><AdaptationSet mimeType="audio/mp4">'
+    + '<Representation id="a64" bandwidth="64000"></Representation>'
+    + '<Representation id="a128" bandwidth="128000"></Representation>'
+    + '</AdaptationSet></MPD>'
+
+  const highest = keepOfflineVideo(xml)
+  assert.match(highest, /1080-high/)
+  assert.doesNotMatch(highest, /id="720"/)
+  assert.doesNotMatch(highest, /id="480"/)
+  assert.match(highest, /a128/)
+  assert.doesNotMatch(highest, /a64/)
+
+  const capped = keepOfflineVideo(xml, 480)
+  assert.match(capped, /id="480"/)
+  assert.doesNotMatch(capped, /1080-high/)
+  assert.doesNotMatch(capped, /id="720"/)
+})
+
+test('offline manifest rewrite collapses the ladder before proxying', () => {
+  const session = {
+    id: 'dl', contentId: 'ep', token: 't', manifestUrl: 'https://example/manifest.mpd',
+    videoContainer: 'dash', headers: {}, cdnHeaders: {}, subtitles: [], captions: [],
+    hardSubs: [], versions: [], createdAt: 0,
+  } as PlaySession
+  const xml = '<MPD type="dynamic" minimumUpdatePeriod="PT2S"><BaseURL>https://vod.crunchyrollcdn.com/a/</BaseURL>'
+    + '<AdaptationSet mimeType="video/mp4">'
+    + '<Representation id="1080" height="1080" bandwidth="9"></Representation>'
+    + '<Representation id="720" height="720" bandwidth="4"></Representation>'
+    + '</AdaptationSet></MPD>'
+  const out = rewriteManifest(xml, 'http://127.0.0.1:17871', session, { offline: { maxHeight: 720 } })
+  assert.match(out, /type="static"/)
+  assert.match(out, /id="720"/)
+  assert.doesNotMatch(out, /id="1080"/)
+  assert.match(out, /\/v\/dl\/cdn\//)
 })
