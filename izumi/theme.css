@@ -41,17 +41,6 @@
   transition: transform 150ms, background-color 150ms, box-shadow 150ms, color 150ms;
 }
 [data-slot="nav.drawer"] [data-part="nav.item"][data-active] { background: transparent; color: #fff; }
-[data-slot="nav.drawer"] [data-part="nav.item"][data-active]::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: calc(10 * var(--cd));
-  bottom: calc(10 * var(--cd));
-  width: calc(3 * var(--cd));
-  border-radius: 9999px;
-  background: var(--cd-brand);
-}
-[data-slot="nav.drawer"] [data-part="nav.item"][data-variant="screen"][data-active]::before { content: none; }
 [data-slot="nav.drawer"] [data-part="nav.item"][data-active]::after {
   content: '';
   margin-left: auto;
@@ -306,7 +295,8 @@
   -webkit-line-clamp: 3;
 }
 [data-part="detail.actions"] { margin-top: 0; gap: calc(12 * var(--cd)); }
-[data-part="detail.actions"] > :not([data-action="play"]):not([data-action="watchlist"]) { display: none; }
+[data-part="detail.actions"] > :not([data-action="play"]):not([data-action="watchlist"]):not([data-action="more"]) { display: none; }
+[data-part="detail.actions"] > [data-action="more"] { order: 9; }
 [data-part="detail.actions"] > [data-action] {
   gap: calc(8 * var(--cd));
   border-radius: calc(8 * var(--cd));
@@ -317,10 +307,11 @@
   transition: box-shadow 150ms;
 }
 [data-part="detail.actions"] > [data-action="play"] { padding-inline: calc(28 * var(--cd)); background: var(--cd-brand); color: #000; }
-[data-part="detail.actions"] > [data-action="watchlist"] { background: rgb(30 30 30 / 0.9); color: #fff; }
+[data-part="detail.actions"] > :is([data-action="watchlist"], [data-action="more"]) { background: rgb(30 30 30 / 0.9); color: #fff; }
+[data-part="detail.actions"] > [data-action="more"] { width: calc(48 * var(--cd)); height: calc(48 * var(--cd)); padding: 0; }
 [data-part="detail.actions"] > [data-action="watchlist"] svg { color: inherit; }
 [data-part="detail.actions"] > [data-action="play"]:is(:focus-visible, :hover) { outline: none; box-shadow: 0 0 0 calc(4 * var(--cd)) rgb(255 255 255 / 0.4); }
-[data-part="detail.actions"] > [data-action="watchlist"]:is(:focus-visible, :hover) { outline: none; box-shadow: 0 0 0 calc(4 * var(--cd)) rgb(255 255 255 / 0.3); }
+[data-part="detail.actions"] > :is([data-action="watchlist"], [data-action="more"]):is(:focus-visible, :hover) { outline: none; box-shadow: 0 0 0 calc(4 * var(--cd)) rgb(255 255 255 / 0.3); }
 
 [data-slot="detail.section"][data-section="episodes"] { margin-top: 0; }
 [data-slot="detail.section"][data-section="episodes"] > [data-part="detail.section-title"] { display: none; }
@@ -382,3 +373,34 @@
 [data-part="cd-ep-number"] { margin-top: calc(8 * var(--cd)); gap: 0.25em; color: rgb(255 255 255 / 0.5); font-size: calc(12 * var(--cd)); font-weight: 700; }
 [data-part="cd-ep-title"] { display: -webkit-box; overflow: hidden; font-size: calc(14 * var(--cd)); font-weight: 700; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
 [data-part="cd-ep-synopsis"] { display: -webkit-box; overflow: hidden; color: rgb(255 255 255 / 0.45); font-size: calc(12 * var(--cd)); -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+
+/* ---- Title page while it loads (Crunchy Deck's series skeleton) ------------------------------- */
+[data-part="detail.skeleton.banner"] { height: 58vh !important; }
+[data-part="detail.skeleton.copy"] { bottom: calc(32 * var(--cd)) !important; left: calc(40 * var(--cd)) !important; max-width: 55% !important; }
+[data-part="detail.skeleton.title"] { width: calc(320 * var(--cd)) !important; height: calc(40 * var(--cd)) !important; margin-bottom: calc(12 * var(--cd)) !important; }
+[data-part="detail.skeleton.title"][data-state="known"] { width: auto !important; height: auto !important; font-size: calc(36 * var(--cd)) !important; line-height: 1.1 !important; }
+[data-part="detail.skeleton.line"] { height: calc(14 * var(--cd)) !important; margin-bottom: calc(8 * var(--cd)) !important; }
+[data-part="detail.skeleton.button"] { width: calc(176 * var(--cd)) !important; height: calc(48 * var(--cd)) !important; margin-top: calc(20 * var(--cd)) !important; border-radius: calc(8 * var(--cd)) !important; }
+[data-part="detail.skeleton.episodes"] { gap: calc(28 * var(--cd)) calc(20 * var(--cd)) !important; padding: calc(12 * var(--cd)) calc(40 * var(--cd)) calc(64 * var(--cd)) !important; }
+[data-part="detail.skeleton.episode"] { border-radius: calc(8 * var(--cd)) !important; }
+
+/* ---- Title options menu (☰ on a series page) --------------------------------------------------- */
+[data-part="options.panel"] { width: calc(400 * var(--cd)); border-left: 0; background: #141519; }
+[data-part="options.title"] { padding: calc(32 * var(--cd)) calc(24 * var(--cd)) calc(12 * var(--cd)); font-size: calc(20 * var(--cd)); font-weight: 700; }
+[data-part="options.list"] { padding: 0 calc(12 * var(--cd)) calc(12 * var(--cd)); }
+[data-part="options.heading"] { padding: calc(16 * var(--cd)) calc(12 * var(--cd)) calc(4 * var(--cd)); color: rgb(255 255 255 / 0.5); font-size: calc(12 * var(--cd)); letter-spacing: 0.08em; }
+[data-part="options.item"] { min-height: calc(52 * var(--cd)); gap: calc(16 * var(--cd)); border-radius: calc(8 * var(--cd)); padding-inline: calc(12 * var(--cd)); font-size: calc(16 * var(--cd)); font-weight: 700; }
+[data-part="options.item"]:focus-visible { background: rgb(255 255 255 / 0.1); color: #fff; box-shadow: inset calc(4 * var(--cd)) 0 0 var(--cd-brand); }
+[data-part="options.item"]:focus-visible [data-part="options.item.icon"] { color: var(--cd-brand); }
+[data-part="options.item.detail"] { font-size: calc(12 * var(--cd)); }
+[data-part="options.hints"] { padding: calc(14 * var(--cd)) calc(24 * var(--cd)); font-size: calc(14 * var(--cd)); }
+[data-part="episode.saved"] { color: var(--cd-brand); }
+
+/* ---- Game mode ----------------------------------------------------------------------------- */
+/* The Deck's WebKitGTK drops a transition's compositor layer when it ends and can paint a frame
+   without it: a visible blink. In Game mode the theme's own parts change state at once instead. */
+:scope.gamemode :is([data-slot="nav.drawer"] [data-part="nav.item"], [data-slot="nav.drawer"] [data-part="nav.item.icon"],
+  [data-part="nav.drawer.foot"] [data-part="nav.action"], [data-part="cd-hero-art"] img, [data-part="cd-play"], [data-part="cd-details"],
+  [data-slot="home.hero"] [data-part="hero.dot.track"], [data-slot="home.hero"] [data-part="hero.edge"], [data-part="card"] > a,
+  [data-part="card.art"]::after, [data-part="season"], [data-part="cd-ep-art"], [data-part="cd-ep-still"] img,
+  [data-part="detail.actions"] > [data-action], [data-part="detail.backdrop"]) { transition: none !important; }
