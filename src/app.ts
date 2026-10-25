@@ -1,5 +1,6 @@
 import { Auth, type AccountStatus, type CrProfile, type DeviceCode, type DeviceFlowState } from './cr/auth.js'
 import { Catalog, type EpisodeHit, type SearchHit } from './cr/catalog.js'
+import { Content } from './cr/content.js'
 import { tryChromeTransport } from './cr/chrome.js'
 import { FetchTransport, type CrTransport } from './cr/http.js'
 import { PlayService, type PlaySession } from './cr/play.js'
@@ -49,6 +50,7 @@ export class CrunchyrollApp {
   readonly transport: CrTransport
   readonly auth: Auth
   readonly catalog: Catalog
+  readonly content: Content
   readonly play: PlayService
   baseUrl = 'http://127.0.0.1:17871'
   shareBaseUrl = ''
@@ -58,6 +60,7 @@ export class CrunchyrollApp {
     this.transport = transport
     this.auth = new Auth(transport, loadSession())
     this.catalog = new Catalog(transport, this.auth)
+    this.content = new Content(transport, this.auth)
     this.play = new PlayService(transport, this.auth)
   }
 

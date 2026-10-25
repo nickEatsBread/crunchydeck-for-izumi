@@ -13,6 +13,7 @@ import { loadOrCreateShareToken } from './storage.js'
 import { CRUNCHYROLL_ICON } from './brand.js'
 import { saveServiceSettings, serviceSettings } from './settings.js'
 import { localAccess } from './access.js'
+import { StremioCatalog } from './stremio.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 let embeddedUiHtml: string | undefined
@@ -179,6 +180,55 @@ async function loadOfflineMedia(
   )
 }
 
+const stremioCatalogs = new WeakMap<CrunchyrollApp, StremioCatalog>()
+
+/** /stremio/…: the Stremio addon protocol over Crunchyroll's catalogue, plus progress and watchlist
+ *  writes. Only on the local scope: share links never reach the account. */
+async function handleStremio(app: CrunchyrollApp, req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+  let catalog = stremioCatalogs.get(app)
+  if (!catalog) {
+    catalog = new StremioCatalog(app)
+    stremioCatalogs.set(app, catalog)
+  }
+  const path = url.pathname.slice('/stremio/'.length)
+  if (req.method === 'GET' && path === 'manifest.json') {
+    send(res, 200, await catalog.manifest())
+    return
+  }
+  const listing = path.match(/^catalog\/(series|movie)\/([^/]+?)(?:\/([^/]+))?\.json$/)
+  if (req.method === 'GET' && listing) {
+    const extra = listing[3] ? decodeURIComponent(listing[3]) : undefined
+    send(res, 200, { metas: await catalog.catalog(decodeURIComponent(listing[2] ?? ''), extra) })
+    return
+  }
+  const meta = path.match(/^meta\/(series|movie)\/([^/]+)\.json$/)
+  if (req.method === 'GET' && meta) {
+    const found = await catalog.meta(decodeURIComponent(meta[2] ?? ''), app.baseUrl)
+    send(res, found ? 200 : 404, found ? { meta: found } : { meta: null })
+    return
+  }
+  const stream = path.match(/^stream\/(series|movie)\/([^/]+)\.json$/)
+  if (req.method === 'GET' && stream) {
+    send(res, 200, { streams: await catalog.stream(decodeURIComponent(stream[2] ?? ''), app.baseUrl) })
+    return
+  }
+  if (req.method === 'POST' && path === 'progress') {
+    const body = await jsonBody(req)
+    const position = Number(body.position)
+    if (!Number.isFinite(position) || position < 0) throw new Error('position must be a number of seconds')
+    await catalog.progress(String(url.searchParams.get('video') ?? body.videoId ?? ''), position)
+    send(res, 200, { ok: true })
+    return
+  }
+  const watchlist = path.match(/^watchlist\/([^/]+)$/)
+  if (watchlist && (req.method === 'POST' || req.method === 'DELETE')) {
+    const on = await catalog.setWatchlist(decodeURIComponent(watchlist[1] ?? ''), req.method === 'POST')
+    send(res, 200, { ok: true, watchlist: on })
+    return
+  }
+  send(res, 404, { error: 'not found' })
+}
+
 function readBinaryBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
@@ -333,7 +383,13 @@ async function handle(
         description: 'Crunchyroll account source. Requires your Crunchyroll login.',
         icon: CRUNCHYROLL_ICON,
         main: 'provider.js',
+        // Crunchyroll's own catalogue, as a Stremio addon (see stremio.ts).
+        catalog: '/stremio/manifest.json',
       })
+      return
+    }
+    if (url.pathname.startsWith('/stremio/') && scope === 'local') {
+      await handleStremio(app, req, res, url)
       return
     }
     if (req.method === 'GET' && url.pathname === '/provider.js') {

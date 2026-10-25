@@ -36,7 +36,7 @@ interface SeriesItem {
   linked_resource?: { type?: string; id?: string }
 }
 
-interface SeasonItem {
+export interface SeasonItem {
   id: string
   title?: string
   season_number?: number
@@ -45,17 +45,21 @@ interface SeasonItem {
   series_id?: string
 }
 
-interface EpisodeItem {
+export interface EpisodeItem {
   id: string
   title?: string
+  description?: string
   episode_number?: number
   sequence_number?: number
+  season_number?: number
+  duration_ms?: number
   audio_locale?: string
   is_clip?: boolean
+  is_premium_only?: boolean
   episode_air_date?: string
   upload_date?: string
   versions?: Array<{ audio_locale?: string; guid?: string; original?: boolean }>
-  images?: { thumbnail?: Array<Array<{ source?: string }>> }
+  images?: { thumbnail?: Array<Array<{ source?: string; width?: number; height?: number }>> }
 }
 
 function listOf<T>(payload: CmsList<T> | undefined): T[] {
@@ -157,8 +161,9 @@ export class Catalog {
     return seasons
   }
 
-  async episodes(mediaId: string): Promise<EpisodeHit[]> {
-    const { seriesId, seasonId, audio } = split(mediaId)
+  /** A season's playable episodes (no clips), in order, with every audio version remembered for
+   *  playback. Returns each episode with the id of the version in `audio`. */
+  async seasonEpisodes(seasonId: string, audio: string): Promise<Array<EpisodeItem & { number: number; guid: string }>> {
     const token = await this.auth.accessToken()
     const profile = this.auth.profile
     const url = `${apiBase(profile)}/content/v2/cms/seasons/${encodeURIComponent(seasonId)}/episodes?locale=${DEFAULT_LOCALE}`
@@ -166,8 +171,7 @@ export class Catalog {
       url,
       crHeaders({ profile, authorization: `Bearer ${token}` }),
     )
-    const sourceTitle = await this.seasonTitle(seriesId, seasonId)
-    const out: EpisodeHit[] = []
+    const out: Array<EpisodeItem & { number: number; guid: string }> = []
     for (const episode of listOf(json)) {
       if (!episode.id || episode.is_clip) continue
       const number = Number(episode.episode_number ?? episode.sequence_number)
@@ -182,15 +186,25 @@ export class Catalog {
       const meta = { audioLocale: versions.find((version) => version.guid === guid)?.language ?? audio, versions }
       this.playbackMeta.set(guid, meta)
       for (const version of versions) this.playbackMeta.set(version.guid, { audioLocale: version.language, versions })
+      out.push({ ...episode, number, guid })
+    }
+    out.sort((a, b) => a.number - b.number)
+    return out
+  }
+
+  async episodes(mediaId: string): Promise<EpisodeHit[]> {
+    const { seriesId, seasonId, audio } = split(mediaId)
+    const sourceTitle = await this.seasonTitle(seriesId, seasonId)
+    const out: EpisodeHit[] = []
+    for (const { guid, number, title } of await this.seasonEpisodes(seasonId, audio)) {
       out.push({
         id: guid,
         number,
-        title: episode.title,
+        title,
         url: `${HOSTS.www}/watch/${guid}`,
         sourceTitle,
       })
     }
-    out.sort((a, b) => a.number - b.number)
     return out
   }
 
