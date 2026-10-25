@@ -123,6 +123,7 @@
   width: 48%;
   max-width: 48%;
   gap: 0;
+  padding: 0 !important;
 }
 [data-part="cd-hero-logo"] { width: 70% !important; height: calc(96 * var(--cd)); margin-bottom: calc(16 * var(--cd)); overflow: visible; filter: drop-shadow(0 10px 8px rgb(0 0 0 / 0.04)) drop-shadow(0 4px 3px rgb(0 0 0 / 0.1)); }
 [data-part="cd-hero-logo"] img { object-fit: contain; object-position: left bottom; }
@@ -135,7 +136,8 @@
   font-size: calc(14 * var(--cd));
   line-height: 1.43;
 }
-[data-part="cd-genres"] { gap: 0 0.3em; align-items: center; }
+[data-part="cd-genres"] { gap: 0; align-items: center; }
+[data-part="cd-comma"] { margin-right: 0.3em; color: rgb(255 255 255 / 0.75); }
 [data-part="cd-rating"] {
   padding: calc(2 * var(--cd)) calc(6 * var(--cd));
   border: 1px solid rgb(255 255 255 / 0.45);
@@ -167,9 +169,9 @@
   line-height: 1.5;
   transition: box-shadow 150ms, background-color 150ms;
 }
-[data-part="cd-play"] { padding: calc(12 * var(--cd)) calc(28 * var(--cd)) !important; background: var(--cd-brand) !important; color: #000 !important; font-weight: 700 !important; }
+[data-part="cd-play"] { line-height: calc(28 * var(--cd)) !important; padding: calc(12 * var(--cd)) calc(28 * var(--cd)) !important; background: var(--cd-brand) !important; color: #000 !important; font-weight: 700 !important; }
 [data-part="cd-play"] svg { width: calc(18 * var(--cd)); height: calc(18 * var(--cd)); }
-[data-part="cd-details"] { padding: calc(12 * var(--cd)) calc(20 * var(--cd)) !important; background: rgb(255 255 255 / 0.15) !important; color: #fff !important; font-weight: 600 !important; }
+[data-part="cd-details"] { line-height: calc(24 * var(--cd)) !important; padding: calc(12 * var(--cd)) calc(20 * var(--cd)) !important; background: rgb(255 255 255 / 0.15) !important; color: #fff !important; font-weight: 600 !important; }
 [data-part="cd-play"]:is(:focus, :focus-visible, :hover) { outline: none !important; filter: none !important; box-shadow: 0 0 0 calc(4 * var(--cd)) rgb(255 255 255 / 0.4); }
 [data-part="cd-details"]:is(:focus, :focus-visible, :hover) { outline: none !important; filter: none !important; background: rgb(255 255 255 / 0.3) !important; box-shadow: 0 0 0 calc(4 * var(--cd)) rgb(255 255 255 / 0.3); }
 [data-slot="home.hero"] [data-part="hero.indicator"] {
@@ -241,12 +243,14 @@
 [data-part="card"]:not([data-shape="episode"]) [data-part="card.meta"] { display: none; }
 [data-part="card.score"], [data-part="card.badge"] { display: none; }
 [data-part="card.progress"] { z-index: 5; height: calc(4 * var(--cd)); background: rgb(255 255 255 / 0.25); }
-[data-part="card"] > a:is(:focus, :focus-visible, :hover) {
+/* Hover counts outside Game mode only: there the cursor rests wherever it was left. */
+[data-part="card"] > a:is(:focus, :focus-visible),
+:scope:not(.gamemode) [data-part="card"] > a:hover {
   outline: none !important;
   transform: scale(1.05);
   box-shadow: 0 0 0 3px var(--cd-brand), 0 14px 34px rgb(0 0 0 / 0.65) !important;
 }
-[data-slot="row"]:focus-within [data-part="card"] > a:not(:focus):not(:hover) { opacity: 0.82; }
+[data-slot="row"]:focus-within [data-part="card"] > a:not(:focus) { opacity: 0.82; }
 [data-part="card.progress"] { z-index: 3; }
 /* The play affordance over the focused card. */
 [data-part="card"] > a [data-part="card.art"]::after {
@@ -268,10 +272,13 @@
   transition: opacity 150ms;
   pointer-events: none;
 }
-[data-part="card"] > a:is(:focus, :focus-visible, :hover) [data-part="card.art"]::after { opacity: 1; }
+[data-part="card"] > a:is(:focus, :focus-visible) [data-part="card.art"]::after,
+:scope:not(.gamemode) [data-part="card"] > a:hover [data-part="card.art"]::after { opacity: 1; }
 
 /* ---- Title page --------------------------------------------------------------------------- */
 [data-slot="detail.banner"] { height: 58vh; min-height: 58vh !important; }
+/* Crunchy Deck's title page has no Back button: B goes back. Pointer windows keep izumi's. */
+:scope.gamemode [data-slot="detail.banner"] > button[aria-label="Back"] { display: none; }
 [data-part="detail.backdrop"] { transition: opacity 500ms; }
 [data-part="detail.scrim"][data-dir="left"] { background-image: linear-gradient(to right, #0a0a0a, rgb(10 10 10 / 0.6) 50%, transparent); }
 [data-part="detail.scrim"][data-dir="bottom"] { background-image: linear-gradient(to top, #0a0a0a, transparent 50%, transparent); }
