@@ -268,6 +268,18 @@ export class Content {
     return panels(json?.data)[0]
   }
 
+  /** Several catalogue objects in one request, by id. */
+  async objects(ids: string[]): Promise<Map<string, CrPanel>> {
+    const out = new Map<string, CrPanel>()
+    if (!ids.length) return out
+    const json = await this.request<{ data?: unknown[] }>(
+      `/content/v2/cms/objects/${ids.map(encodeURIComponent).join(',')}?locale=${DEFAULT_LOCALE}`,
+      { ttlMs: 10 * 60_000 },
+    )
+    for (const panel of panels(json?.data)) out.set(panel.id, panel)
+    return out
+  }
+
   /** A movie listing's movies (usually one). */
   async movies(listingId: string): Promise<CrPanel[]> {
     const json = await this.request<{ data?: unknown[] }>(

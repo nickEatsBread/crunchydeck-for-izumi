@@ -5,7 +5,7 @@
   "themeApi": 7,
   "id": "crunchy-deck",
   "name": "Crunchy Deck",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "author": "Crunchy Deck",
   "description": "Crunchy Deck's look: Crunchyroll orange on near-black, a slide-in menu instead of a top bar or rail, a tall featured banner with the title logo, Sub | Dub and the age rating, cards with their titles on the artwork, and season pills over an episode grid.",
   "design": {
@@ -30,7 +30,11 @@
     },
     "radius": 0.75,
     "font": "nunito",
-    "fonts": { "ui": "nunito", "heading": "nunito", "display": "nunito" },
+    "fonts": {
+      "ui": "nunito",
+      "heading": "nunito",
+      "display": "nunito"
+    },
     "fontScale": 1,
     "backdrop": "solid",
     "backdropStrength": 0,
@@ -40,7 +44,12 @@
       "trueBlack": false,
       "hideCardLabels": false,
       "cardPreview": "none",
-      "shell": { "nav": "drawer", "compact": false, "overlay": "none", "press": "none" },
+      "shell": {
+        "nav": "drawer",
+        "compact": false,
+        "overlay": "none",
+        "press": "none"
+      },
       "hero": {
         "height": 66,
         "rotate": true,
@@ -48,49 +57,173 @@
         "rankHidden": true,
         "limit": 7,
         "transition": "fade",
-        "indicator": { "style": "bars", "position": "end", "color": "#F47521", "past": "empty" },
+        "indicator": {
+          "style": "bars",
+          "position": "end",
+          "color": "#F47521",
+          "past": "empty"
+        },
         "template": {
           "type": "overlay",
           "part": "cd-hero",
           "children": [
-            { "type": "artwork", "artwork": "backdrop", "part": "cd-hero-art", "style": { "anchor": "fill", "fit": "cover" } },
+            {
+              "type": "artwork",
+              "artwork": "backdrop",
+              "part": "cd-hero-art",
+              "style": {
+                "anchor": "fill",
+                "fit": "cover"
+              }
+            },
             {
               "type": "stack",
               "part": "cd-hero-body",
-              "style": { "anchor": "bottom-start" },
+              "style": {
+                "anchor": "bottom-start"
+              },
               "children": [
-                { "type": "artwork", "artwork": "logo", "part": "cd-hero-logo", "when": { "field": "logo" }, "style": { "fit": "contain" } },
-                { "type": "text", "field": "title", "part": "cd-hero-title", "when": { "field": "logo", "absent": true } },
+                {
+                  "type": "artwork",
+                  "artwork": "logo",
+                  "part": "cd-hero-logo",
+                  "when": {
+                    "field": "logo"
+                  },
+                  "style": {
+                    "fit": "contain"
+                  }
+                },
+                {
+                  "type": "text",
+                  "field": "title",
+                  "part": "cd-hero-title",
+                  "when": {
+                    "field": "logo",
+                    "absent": true
+                  }
+                },
                 {
                   "type": "row",
                   "part": "cd-hero-meta",
                   "children": [
-                    { "type": "text", "field": "ageRating", "part": "cd-rating", "when": { "field": "ageRating" } },
-                    { "type": "text", "text": "◆", "part": "cd-sep", "when": { "field": "audio" } },
-                    { "type": "text", "field": "audio", "part": "cd-meta-text", "when": { "field": "audio" } },
-                    { "type": "text", "text": "◆", "part": "cd-sep", "when": { "field": "genre" } },
+                    {
+                      "type": "text",
+                      "field": "ageRating",
+                      "part": "cd-rating",
+                      "when": {
+                        "field": "ageRating"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "text": "◆",
+                      "part": "cd-sep",
+                      "when": {
+                        "field": "audio"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "field": "audio",
+                      "part": "cd-meta-text",
+                      "when": {
+                        "field": "audio"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "text": "◆",
+                      "part": "cd-sep",
+                      "when": {
+                        "field": "genre"
+                      }
+                    },
                     {
                       "type": "row",
                       "part": "cd-genres",
-                      "when": { "field": "genre" },
+                      "when": {
+                        "field": "genre"
+                      },
                       "children": [
-                        { "type": "text", "field": "genre", "part": "cd-meta-text" },
-                        { "type": "text", "text": ",", "part": "cd-meta-text", "when": { "field": "genre2" } },
-                        { "type": "text", "field": "genre2", "part": "cd-meta-text", "when": { "field": "genre2" } },
-                        { "type": "text", "text": ",", "part": "cd-meta-text", "when": { "field": "genre3" } },
-                        { "type": "text", "field": "genre3", "part": "cd-meta-text", "when": { "field": "genre3" } }
+                        {
+                          "type": "text",
+                          "field": "genre",
+                          "part": "cd-meta-text"
+                        },
+                        {
+                          "type": "text",
+                          "text": ",",
+                          "part": "cd-meta-text",
+                          "when": {
+                            "field": "genre2"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "field": "genre2",
+                          "part": "cd-meta-text",
+                          "when": {
+                            "field": "genre2"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "text": ",",
+                          "part": "cd-meta-text",
+                          "when": {
+                            "field": "genre3"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "field": "genre3",
+                          "part": "cd-meta-text",
+                          "when": {
+                            "field": "genre3"
+                          }
+                        }
                       ]
                     }
                   ]
                 },
-                { "type": "text", "field": "description", "part": "cd-hero-synopsis", "when": { "field": "description" } },
+                {
+                  "type": "text",
+                  "field": "description",
+                  "part": "cd-hero-synopsis",
+                  "when": {
+                    "field": "description"
+                  }
+                },
                 {
                   "type": "row",
                   "part": "cd-hero-actions",
                   "children": [
-                    { "type": "action", "action": "play", "text": "Continue", "part": "cd-play", "when": { "field": "progress" } },
-                    { "type": "action", "action": "play", "text": "Start Watching", "part": "cd-play", "when": { "field": "progress", "absent": true } },
-                    { "type": "action", "action": "details", "text": "Details", "part": "cd-details" }
+                    {
+                      "type": "action",
+                      "action": "play",
+                      "text": "Continue",
+                      "part": "cd-play",
+                      "when": {
+                        "field": "progress"
+                      }
+                    },
+                    {
+                      "type": "action",
+                      "action": "play",
+                      "text": "Play",
+                      "part": "cd-play",
+                      "when": {
+                        "field": "progress",
+                        "absent": true
+                      }
+                    },
+                    {
+                      "type": "action",
+                      "action": "details",
+                      "text": "Details",
+                      "part": "cd-details"
+                    }
                   ]
                 }
               ]
@@ -101,7 +234,13 @@
       "detail": {
         "layout": "overlay",
         "title": "text",
-        "sections": { "mode": "stack", "tabs": ["episodes"], "unlisted": "hidden" },
+        "sections": {
+          "mode": "stack",
+          "tabs": [
+            "episodes"
+          ],
+          "unlisted": "hidden"
+        },
         "episodes": {
           "seasons": "chips",
           "arrangement": "grid",
@@ -113,17 +252,52 @@
               {
                 "type": "overlay",
                 "part": "cd-ep-art",
-                "style": { "aspect": "16 / 9" },
+                "style": {
+                  "aspect": "16 / 9"
+                },
                 "children": [
-                  { "type": "artwork", "artwork": "still", "part": "cd-ep-still", "style": { "anchor": "fill", "fit": "cover" } },
-                  { "type": "text", "field": "watched", "part": "cd-ep-badge", "when": { "field": "watched" } },
+                  {
+                    "type": "artwork",
+                    "artwork": "still",
+                    "part": "cd-ep-still",
+                    "style": {
+                      "anchor": "fill",
+                      "fit": "cover"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "field": "watched",
+                    "part": "cd-ep-badge",
+                    "when": {
+                      "field": "watched"
+                    }
+                  },
                   {
                     "type": "stack",
                     "part": "cd-ep-unwatched",
-                    "when": { "field": "watched", "absent": true },
+                    "when": {
+                      "field": "watched",
+                      "absent": true
+                    },
                     "children": [
-                      { "type": "text", "field": "duration", "part": "cd-ep-badge", "when": { "field": "duration" } },
-                      { "type": "meter", "field": "progress", "part": "cd-ep-progress", "when": { "field": "progress", "atMost": 99 } }
+                      {
+                        "type": "text",
+                        "field": "duration",
+                        "part": "cd-ep-badge",
+                        "when": {
+                          "field": "duration"
+                        }
+                      },
+                      {
+                        "type": "meter",
+                        "field": "progress",
+                        "part": "cd-ep-progress",
+                        "when": {
+                          "field": "progress",
+                          "atMost": 99
+                        }
+                      }
                     ]
                   }
                 ]
@@ -132,16 +306,36 @@
                 "type": "row",
                 "part": "cd-ep-number",
                 "children": [
-                  { "type": "text", "text": "Episode", "part": "cd-ep-number-text" },
-                  { "type": "text", "field": "episodeNo", "part": "cd-ep-number-text" }
+                  {
+                    "type": "text",
+                    "text": "Episode",
+                    "part": "cd-ep-number-text"
+                  },
+                  {
+                    "type": "text",
+                    "field": "episodeNo",
+                    "part": "cd-ep-number-text"
+                  }
                 ]
               },
-              { "type": "text", "field": "episodeTitle", "part": "cd-ep-title" },
-              { "type": "text", "field": "description", "part": "cd-ep-synopsis", "when": { "field": "description" } }
+              {
+                "type": "text",
+                "field": "episodeTitle",
+                "part": "cd-ep-title"
+              },
+              {
+                "type": "text",
+                "field": "description",
+                "part": "cd-ep-synopsis",
+                "when": {
+                  "field": "description"
+                }
+              }
             ]
           }
         }
       }
-    }
+    },
+    "css": "/* Crunchy Deck for izumi. Sizes are Crunchy Deck's own CSS px times --cd: Crunchy Deck runs at a\n   1.5x page zoom on the Steam Deck and izumi's Game mode at 1.25x, so Game mode scales them by 1.2. */\n:scope {\n  --cd: 1px;\n  --cd-brand: #f47521;\n  --cd-surface: #0a0a0a;\n  --cd-s1: #141414;\n  --cd-s2: #1e1e1e;\n  --cd-s3: #2a2a2a;\n}\n:scope.gamemode { --cd: 1.2px; }\n:scope { background: var(--cd-surface); }\n\n/* ---- Drawer navigation -------------------------------------------------------------------- */\n[data-slot=\"nav.drawer\"] {\n  width: calc(288 * var(--cd));\n  gap: calc(2 * var(--cd));\n  padding: calc(24 * var(--cd)) calc(12 * var(--cd)) 0;\n  border: 0;\n  background: var(--cd-s1);\n  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);\n}\n[data-part=\"nav.drawer.head\"] {\n  margin: 0;\n  padding: 0 calc(8 * var(--cd)) calc(16 * var(--cd));\n  gap: calc(12 * var(--cd));\n  color: #fff;\n}\n[data-slot=\"nav.drawer\"] [data-part=\"nav.item\"] {\n  position: relative;\n  height: auto;\n  min-height: 0;\n  flex-shrink: 0;\n  gap: calc(12 * var(--cd));\n  padding: calc(10 * var(--cd)) calc(12 * var(--cd));\n  border-radius: calc(12 * var(--cd));\n  background: transparent;\n  color: rgb(255 255 255 / 0.55);\n  font-size: calc(15 * var(--cd));\n  font-weight: 700;\n  transition: transform 150ms, background-color 150ms, box-shadow 150ms, color 150ms;\n}\n[data-slot=\"nav.drawer\"] [data-part=\"nav.item\"][data-active] { background: transparent; color: #fff; }\n[data-slot=\"nav.drawer\"] [data-part=\"nav.item\"][data-active]::before {\n  content: '';\n  position: absolute;\n  left: 0;\n  top: calc(10 * var(--cd));\n  bottom: calc(10 * var(--cd));\n  width: calc(3 * var(--cd));\n  border-radius: 9999px;\n  background: var(--cd-brand);\n}\n[data-slot=\"nav.drawer\"] [data-part=\"nav.item\"][data-variant=\"screen\"][data-active]::before { content: none; }\n[data-slot=\"nav.drawer\"] [data-part=\"nav.item\"][data-active]::after {\n  content: '';\n  margin-left: auto;\n  width: calc(6 * var(--cd));\n  height: calc(6 * var(--cd));\n  border-radius: 9999px;\n  background: var(--cd-brand);\n}\n[data-slot=\"nav.drawer\"] [data-part=\"nav.item.icon\"] { width: auto; color: rgb(255 255 255 / 0.45); transition: color 150ms; }\n[data-slot=\"nav.drawer\"] [data-part=\"nav.item.icon\"] svg { width: calc(20 * var(--cd)); height: calc(20 * var(--cd)); }\n[data-slot=\"nav.drawer\"] [data-part=\"nav.item\"][data-active] [data-part=\"nav.item.icon\"] { color: var(--cd-brand); }\n[data-slot=\"nav.drawer\"] [data-part=\"nav.item\"]:is(:focus-visible, :hover) {\n  transform: scale(1.02);\n  outline: none;\n  background: rgb(244 117 33 / 0.15);\n  color: #fff;\n  box-shadow: inset 0 0 0 1.5px var(--cd-brand);\n}\n[data-slot=\"nav.drawer\"] [data-part=\"nav.item\"]:is(:focus-visible, :hover) [data-part=\"nav.item.icon\"] { color: var(--cd-brand); }\n[data-part=\"nav.drawer.heading\"] {\n  margin: 0;\n  padding: calc(16 * var(--cd)) calc(12 * var(--cd)) calc(4 * var(--cd));\n  color: rgb(255 255 255 / 0.3);\n  font-size: calc(10 * var(--cd));\n  font-weight: 800;\n  letter-spacing: 0.14em;\n}\n[data-part=\"nav.drawer.foot\"] {\n  margin: auto calc(-12 * var(--cd)) 0;\n  padding: calc(12 * var(--cd));\n  gap: calc(8 * var(--cd));\n  border-top: 1px solid rgb(255 255 255 / 0.1);\n}\n[data-part=\"nav.drawer.foot\"] [data-part=\"nav.action\"] {\n  border-radius: calc(12 * var(--cd));\n  color: rgb(255 255 255 / 0.55);\n  transition: background-color 150ms, box-shadow 150ms, color 150ms;\n}\n[data-part=\"nav.drawer.foot\"] [data-action=\"account\"] { padding: calc(8 * var(--cd)); gap: calc(12 * var(--cd)); color: #fff; font-size: calc(14 * var(--cd)); font-weight: 700; }\n[data-part=\"nav.drawer.foot\"] [data-action=\"account\"] [data-part=\"nav.action.icon\"] { width: calc(36 * var(--cd)); height: calc(36 * var(--cd)); }\n[data-part=\"nav.drawer.foot\"] [data-action=\"account\"] img { width: 100%; height: 100%; border-radius: calc(8 * var(--cd)); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.1); }\n[data-part=\"nav.drawer.foot\"] :is([data-action=\"settings\"], [data-action=\"incognito\"]) { width: calc(44 * var(--cd)); height: calc(44 * var(--cd)); }\n[data-part=\"nav.drawer.foot\"] [data-action=\"settings\"][data-active] { color: var(--cd-brand); }\n[data-part=\"nav.drawer.foot\"] [data-part=\"nav.action\"]:is(:focus-visible, :hover) {\n  outline: none;\n  background: rgb(244 117 33 / 0.15);\n  color: var(--cd-brand);\n  box-shadow: inset 0 0 0 1.5px var(--cd-brand);\n}\n[data-part=\"nav.drawer.foot\"] [data-action=\"account\"]:is(:focus-visible, :hover) { background: rgb(255 255 255 / 0.05); color: #fff; }\n[data-part=\"nav.menu\"] { border-radius: 9999px; background: rgb(0 0 0 / 0.5); color: #fff; }\n\n/* ---- Featured banner ---------------------------------------------------------------------- */\n[data-slot=\"home.hero\"] { background: var(--cd-surface); }\n[data-part=\"cd-hero\"] { height: 100%; }\n[data-part=\"cd-hero-art\"]::after {\n  content: '';\n  position: absolute;\n  inset: 0;\n  pointer-events: none;\n  background-image:\n    linear-gradient(to top, rgb(10 10 10 / 0.9), transparent 50%, transparent),\n    linear-gradient(to right, #0a0a0a, rgb(10 10 10 / 0.6) 50%, transparent);\n}\n[data-part=\"cd-hero-art\"] img { transition: opacity 700ms; }\n[data-part=\"cd-hero-body\"] {\n  left: calc(40 * var(--cd)) !important;\n  bottom: calc(40 * var(--cd)) !important;\n  width: 48%;\n  max-width: 48%;\n  gap: 0;\n}\n[data-part=\"cd-hero-logo\"] { width: 70% !important; height: calc(96 * var(--cd)); margin-bottom: calc(16 * var(--cd)); overflow: visible; filter: drop-shadow(0 10px 8px rgb(0 0 0 / 0.04)) drop-shadow(0 4px 3px rgb(0 0 0 / 0.1)); }\n[data-part=\"cd-hero-logo\"] img { object-fit: contain; object-position: left bottom; }\n[data-part=\"cd-hero-title\"] { margin-bottom: calc(12 * var(--cd)); font-size: calc(36 * var(--cd)); font-weight: 900; line-height: 1.1; text-shadow: 0 2px 8px rgb(0 0 0 / 0.5); }\n[data-part=\"cd-hero-meta\"] {\n  min-height: calc(28 * var(--cd));\n  margin-bottom: calc(12 * var(--cd));\n  align-items: center;\n  gap: calc(4 * var(--cd)) calc(8 * var(--cd));\n  font-size: calc(14 * var(--cd));\n  line-height: 1.43;\n}\n[data-part=\"cd-genres\"] { gap: 0 0.3em; align-items: center; }\n[data-part=\"cd-rating\"] {\n  padding: calc(2 * var(--cd)) calc(6 * var(--cd));\n  border: 1px solid rgb(255 255 255 / 0.45);\n  border-radius: calc(4 * var(--cd));\n  color: #fff;\n  font-size: calc(12 * var(--cd));\n  font-weight: 700;\n  line-height: 1.33;\n}\n[data-part=\"cd-sep\"] { color: rgb(255 255 255 / 0.4); font-size: calc(9.6 * var(--cd)); line-height: 1; user-select: none; }\n[data-part=\"cd-meta-text\"] { color: rgb(255 255 255 / 0.75); }\n[data-part=\"cd-hero-synopsis\"] {\n  display: -webkit-box;\n  max-width: calc(576 * var(--cd));\n  margin-bottom: calc(20 * var(--cd));\n  overflow: hidden;\n  color: rgb(255 255 255 / 0.8);\n  font-size: calc(14 * var(--cd));\n  line-height: 1.43;\n  -webkit-box-orient: vertical;\n  -webkit-line-clamp: 2;\n}\n[data-part=\"cd-hero-actions\"] { gap: calc(12 * var(--cd)); align-items: center; }\n[data-part=\"cd-play\"], [data-part=\"cd-details\"] {\n  min-height: 0 !important;\n  gap: calc(8 * var(--cd)) !important;\n  border-radius: calc(8 * var(--cd)) !important;\n  font-size: calc(16 * var(--cd)) !important;\n  line-height: 1.5;\n  transition: box-shadow 150ms, background-color 150ms;\n}\n[data-part=\"cd-play\"] { padding: calc(12 * var(--cd)) calc(28 * var(--cd)) !important; background: var(--cd-brand) !important; color: #000 !important; font-weight: 700 !important; }\n[data-part=\"cd-play\"] svg { width: calc(18 * var(--cd)); height: calc(18 * var(--cd)); }\n[data-part=\"cd-details\"] { padding: calc(12 * var(--cd)) calc(20 * var(--cd)) !important; background: rgb(255 255 255 / 0.15) !important; color: #fff !important; font-weight: 600 !important; }\n[data-part=\"cd-play\"]:is(:focus, :focus-visible, :hover) { outline: none !important; filter: none !important; box-shadow: 0 0 0 calc(4 * var(--cd)) rgb(255 255 255 / 0.4); }\n[data-part=\"cd-details\"]:is(:focus, :focus-visible, :hover) { outline: none !important; filter: none !important; background: rgb(255 255 255 / 0.3) !important; box-shadow: 0 0 0 calc(4 * var(--cd)) rgb(255 255 255 / 0.3); }\n[data-slot=\"home.hero\"] [data-part=\"hero.indicator\"] {\n  position: absolute;\n  inset: auto calc(24 * var(--cd)) calc(16 * var(--cd)) auto;\n  display: flex;\n  gap: calc(8 * var(--cd));\n  padding: 0;\n}\n[data-slot=\"home.hero\"] [data-part=\"hero.dot\"] { padding: 0; }\n[data-slot=\"home.hero\"] [data-part=\"hero.dot.track\"] {\n  width: calc(8 * var(--cd));\n  height: calc(8 * var(--cd));\n  border-radius: 9999px;\n  background: rgb(255 255 255 / 0.4);\n  transition: width 300ms, background-color 300ms;\n}\n[data-slot=\"home.hero\"] [data-part=\"hero.dot\"][data-active] [data-part=\"hero.dot.track\"] { width: calc(40 * var(--cd)); background: rgb(255 255 255 / 0.3); }\n/* The arrows only show while the pointer is over the banner, as in Crunchy Deck. */\n[data-slot=\"home.hero\"] [data-part=\"hero.edge\"] {\n  width: calc(48 * var(--cd));\n  height: calc(48 * var(--cd));\n  border-radius: 9999px;\n  background: rgb(0 0 0 / 0.5);\n  color: #fff;\n  opacity: 0 !important;\n  transition: opacity 200ms;\n}\n[data-slot=\"home.hero\"]:hover [data-part=\"hero.edge\"] { opacity: 1 !important; }\n\n/* ---- Rows and cards ----------------------------------------------------------------------- */\n[data-slot=\"home\"] [data-slot=\"row\"] { margin-bottom: calc(20 * var(--cd)); }\n[data-slot=\"row\"] [data-part=\"row.header\"] { margin-bottom: calc(6 * var(--cd)); padding-inline: calc(40 * var(--cd)); }\n[data-slot=\"row\"] [data-part=\"row.title\"] { color: rgb(255 255 255 / 0.8); font-size: calc(18 * var(--cd)); font-weight: 700; line-height: 1.55; }\n[data-slot=\"row\"] [data-part=\"row.track\"] {\n  gap: calc(16 * var(--cd)) !important;\n  padding: calc(8 * var(--cd)) calc(40 * var(--cd)) calc(32 * var(--cd));\n  scroll-padding-inline: calc(40 * var(--cd));\n}\n[data-part=\"card\"] { width: calc(195 * var(--cd)) !important; }\n[data-part=\"card\"][data-shape=\"episode\"] { width: calc(266 * var(--cd)) !important; }\n[data-part=\"card\"] > a {\n  position: relative;\n  display: block;\n  width: 100% !important;\n  overflow: hidden;\n  border-radius: calc(12 * var(--cd));\n  background: var(--cd-s2);\n  transition: transform 150ms ease-out, box-shadow 150ms ease-out, opacity 150ms ease;\n}\n[data-part=\"card\"] [data-part=\"card.art\"] { height: calc(290 * var(--cd)); aspect-ratio: auto !important; border-radius: 0; background: var(--cd-s2); }\n[data-part=\"card\"][data-shape=\"episode\"] [data-part=\"card.art\"] { height: calc(150 * var(--cd)); }\n[data-part=\"card\"] [data-part=\"card.art\"] { z-index: auto !important; transform: none !important; box-shadow: none !important; outline: none !important; }\n[data-part=\"card\"] [data-part=\"card.art\"] img { transform: none !important; }\n[data-part=\"card\"] a > div:has(> [data-part=\"card.title\"]) {\n  position: absolute;\n  inset: auto 0 0 0;\n  display: flex;\n  flex-direction: column-reverse;\n  min-height: 0;\n  padding: calc(24 * var(--cd)) calc(8 * var(--cd)) calc(8 * var(--cd));\n  z-index: 2;\n  pointer-events: none;\n  background-image: linear-gradient(to top, rgb(0 0 0 / 0.9), transparent);\n}\n[data-part=\"card.title\"] { margin: 0; color: #fff; font-size: calc(12 * var(--cd)); font-weight: 700; line-height: 1.25; text-align: left; }\n[data-part=\"card.title\"] > span:first-child:empty { display: none; }\n[data-part=\"card.meta\"] { margin: 0 0 calc(2 * var(--cd)); color: rgb(255 255 255 / 0.8); font-size: calc(11 * var(--cd)); font-weight: 600; }\n[data-part=\"card\"]:not([data-shape=\"episode\"]) [data-part=\"card.meta\"] { display: none; }\n[data-part=\"card.score\"], [data-part=\"card.badge\"] { display: none; }\n[data-part=\"card.progress\"] { z-index: 5; height: calc(4 * var(--cd)); background: rgb(255 255 255 / 0.25); }\n[data-part=\"card\"] > a:is(:focus, :focus-visible, :hover) {\n  outline: none !important;\n  transform: scale(1.05);\n  box-shadow: 0 0 0 3px var(--cd-brand), 0 14px 34px rgb(0 0 0 / 0.65) !important;\n}\n[data-slot=\"row\"]:focus-within [data-part=\"card\"] > a:not(:focus):not(:hover) { opacity: 0.82; }\n[data-part=\"card.progress\"] { z-index: 3; }\n/* The play affordance over the focused card. */\n[data-part=\"card\"] > a [data-part=\"card.art\"]::after {\n  content: '▶';\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  display: grid;\n  width: calc(48 * var(--cd));\n  height: calc(48 * var(--cd));\n  place-items: center;\n  padding-left: calc(2 * var(--cd));\n  border-radius: 9999px;\n  background: rgb(0 0 0 / 0.6);\n  color: #fff;\n  font-size: calc(20 * var(--cd));\n  opacity: 0;\n  transform: translate(-50%, -50%);\n  transition: opacity 150ms;\n  pointer-events: none;\n}\n[data-part=\"card\"] > a:is(:focus, :focus-visible, :hover) [data-part=\"card.art\"]::after { opacity: 1; }\n\n/* ---- Title page --------------------------------------------------------------------------- */\n[data-slot=\"detail.banner\"] { height: 58vh; min-height: 58vh !important; }\n[data-part=\"detail.backdrop\"] { transition: opacity 500ms; }\n[data-part=\"detail.scrim\"][data-dir=\"left\"] { background-image: linear-gradient(to right, #0a0a0a, rgb(10 10 10 / 0.6) 50%, transparent); }\n[data-part=\"detail.scrim\"][data-dir=\"bottom\"] { background-image: linear-gradient(to top, #0a0a0a, transparent 50%, transparent); }\n[data-slot=\"detail.banner\"] > div:has(> [data-part=\"detail.body\"]) { min-height: 58vh; max-width: none; padding: 0 0 calc(32 * var(--cd)) calc(40 * var(--cd)); }\n[data-part=\"detail.body\"] { max-width: 55%; flex: none; }\n[data-part=\"detail.title\"] {\n  width: auto !important;\n  height: auto !important;\n  margin-bottom: calc(12 * var(--cd));\n  font-size: calc(36 * var(--cd));\n  font-weight: 900;\n  line-height: 1.1;\n  text-shadow: 0 2px 8px rgb(0 0 0 / 0.5);\n}\n[data-part=\"detail.logo\"] { display: none; }\n[data-part=\"detail.title\"][aria-label]::after { content: attr(aria-label); }\n[data-part=\"detail.meta\"], [data-part=\"detail.genres\"] { display: none; }\n[data-part=\"detail.body\"] > div:has(> [data-part=\"ratings\"]), [data-part=\"detail.body\"] > .mt-3:not([data-part]) { display: none; }\n[data-part=\"detail.synopsis\"] {\n  max-width: none;\n  margin: 0 0 calc(20 * var(--cd));\n  color: rgb(255 255 255 / 0.75);\n  font-size: calc(14 * var(--cd));\n  line-height: 1.43;\n  -webkit-line-clamp: 3;\n}\n[data-part=\"detail.actions\"] { margin-top: 0; gap: calc(12 * var(--cd)); }\n[data-part=\"detail.actions\"] > :not([data-action=\"play\"]):not([data-action=\"watchlist\"]) { display: none; }\n[data-part=\"detail.actions\"] > [data-action] {\n  gap: calc(8 * var(--cd));\n  border-radius: calc(8 * var(--cd));\n  padding: calc(12 * var(--cd)) calc(20 * var(--cd));\n  font-size: calc(16 * var(--cd));\n  font-weight: 700;\n  line-height: 1.5;\n  transition: box-shadow 150ms;\n}\n[data-part=\"detail.actions\"] > [data-action=\"play\"] { padding-inline: calc(28 * var(--cd)); background: var(--cd-brand); color: #000; }\n[data-part=\"detail.actions\"] > [data-action=\"watchlist\"] { background: rgb(30 30 30 / 0.9); color: #fff; }\n[data-part=\"detail.actions\"] > [data-action=\"watchlist\"] svg { color: inherit; }\n[data-part=\"detail.actions\"] > [data-action=\"play\"]:is(:focus-visible, :hover) { outline: none; box-shadow: 0 0 0 calc(4 * var(--cd)) rgb(255 255 255 / 0.4); }\n[data-part=\"detail.actions\"] > [data-action=\"watchlist\"]:is(:focus-visible, :hover) { outline: none; box-shadow: 0 0 0 calc(4 * var(--cd)) rgb(255 255 255 / 0.3); }\n\n[data-slot=\"detail.section\"][data-section=\"episodes\"] { margin-top: 0; }\n[data-slot=\"detail.section\"][data-section=\"episodes\"] > [data-part=\"detail.section-title\"] { display: none; }\n[data-slot=\"detail.episodes\"] { margin-top: 0; padding: calc(12 * var(--cd)) calc(40 * var(--cd)) calc(64 * var(--cd)); }\n[data-slot=\"episodes.toolbar\"] { margin-bottom: calc(24 * var(--cd)); }\n[data-part=\"episodes.heading\"] { display: none; }\n[data-slot=\"episodes.seasons\"] { gap: calc(8 * var(--cd)); margin: 0; padding: 0; flex-wrap: wrap; overflow: visible; }\n[data-part=\"season\"] {\n  padding: calc(6 * var(--cd)) calc(16 * var(--cd));\n  border: 0;\n  border-radius: 9999px;\n  background: var(--cd-s2);\n  color: rgb(255 255 255 / 0.8);\n  font-size: calc(14 * var(--cd));\n  font-weight: 600;\n  transition: box-shadow 150ms;\n}\n[data-part=\"season\"][data-active] { background: var(--cd-brand); color: #000; }\n[data-part=\"season.label\"] { font-size: inherit; font-weight: inherit; }\n[data-part=\"season.year\"] { display: none; }\n[data-part=\"season\"]:is(:focus-visible, :hover) { outline: none; box-shadow: 0 0 0 2px var(--cd-brand); }\n/* Crunchy Deck's grid-cols-2 md:grid-cols-3 xl:grid-cols-4: three across on the Deck, four on a wide window. */\n[data-slot=\"detail.episodes\"] [data-part=\"episodes.grid\"] {\n  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;\n  gap: calc(28 * var(--cd)) calc(20 * var(--cd)) !important;\n}\n@media (min-width: 1280px) {\n  :scope:not(.gamemode) [data-slot=\"detail.episodes\"] [data-part=\"episodes.grid\"] { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }\n}\n[data-part=\"episode\"][data-variant=\"template\"] { overflow: visible; border-radius: 0; background: transparent; outline: none; }\n[data-part=\"cd-ep-art\"] { overflow: hidden; border-radius: calc(12 * var(--cd)); background: var(--cd-s2); transition: box-shadow 150ms; }\n[data-part=\"cd-ep-still\"] img { transition: transform 150ms, opacity 150ms; }\n[data-part=\"episode\"]:is(:focus-visible, :hover) [data-part=\"cd-ep-art\"] { box-shadow: 0 0 0 2px var(--cd-brand); }\n[data-part=\"episode\"]:is(:focus-visible, :hover) [data-part=\"cd-ep-still\"] img { transform: scale(1.05); }\n[data-part=\"cd-ep-art\"]:has(> [data-part=\"cd-ep-badge\"]) [data-part=\"cd-ep-still\"] img { opacity: 0.5; }\n[data-part=\"cd-ep-badge\"] {\n  position: absolute;\n  right: calc(6 * var(--cd));\n  bottom: calc(6 * var(--cd));\n  justify-self: end;\n  align-self: end;\n  padding: calc(2 * var(--cd)) calc(6 * var(--cd));\n  border-radius: calc(4 * var(--cd));\n  background: rgb(0 0 0 / 0.75);\n  color: #fff;\n  font-size: calc(10 * var(--cd));\n  font-weight: 600;\n}\n[data-part=\"cd-ep-unwatched\"] { position: absolute; inset: 0; }\n[data-part=\"cd-ep-progress\"] {\n  position: absolute;\n  inset: auto 0 0 0;\n  min-height: 0 !important;\n  height: calc(4 * var(--cd));\n  border-radius: 0;\n  background: rgb(255 255 255 / 0.25);\n}\n[data-part=\"cd-ep-progress\"] > span { background: var(--cd-brand); }\n[data-part=\"cd-ep-number\"] { margin-top: calc(8 * var(--cd)); gap: 0.25em; color: rgb(255 255 255 / 0.5); font-size: calc(12 * var(--cd)); font-weight: 700; }\n[data-part=\"cd-ep-title\"] { display: -webkit-box; overflow: hidden; font-size: calc(14 * var(--cd)); font-weight: 700; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }\n[data-part=\"cd-ep-synopsis\"] { display: -webkit-box; overflow: hidden; color: rgb(255 255 255 / 0.45); font-size: calc(12 * var(--cd)); -webkit-box-orient: vertical; -webkit-line-clamp: 2; }\n"
   }
 }

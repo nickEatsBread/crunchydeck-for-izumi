@@ -74,7 +74,8 @@ export function episodeLabel(season: number | undefined, episode: number | strin
   return [season != null ? `S${season}` : '', episode != null && episode !== '' ? `E${episode}` : ''].filter(Boolean).join(' ')
 }
 
-const titleCase = (value: string) => value.replace(/(^|[\s-])(\w)/g, (_m, sep: string, ch: string) => sep + ch.toUpperCase())
+// As Crunchy Deck prints them: "slice-of-life" reads "Slice Of Life".
+const titleCase = (value: string) => value.replace(/[-_]+/g, ' ').replace(/(^|\s)(\w)/g, (_m, sep: string, ch: string) => sep + ch.toUpperCase())
 
 function seriesFields(meta: CrSeriesMetadata | undefined) {
   return {
@@ -140,6 +141,19 @@ export function heroMeta(card: HeroCard): StremioMeta {
     poster: curationUrl(card.tallImage, 480),
     logo: curationUrl(card.logoImage, 600),
     description: card.description,
+  }
+}
+
+/** A featured title's facts line (age rating, Sub | Dub, genres), from its catalogue object. */
+export function withFacts(meta: StremioMeta, panel: CrPanel | undefined): StremioMeta {
+  const series = panel?.series_metadata ?? panel?.movie_listing_metadata
+  if (!series) return meta
+  const rating = ratingOf(series)
+  const audio = audioLabel(series)
+  return {
+    ...meta,
+    ...seriesFields(series),
+    izumi: { ...meta.izumi, ...(rating ? { rating } : {}), ...(audio ? { audio } : {}) },
   }
 }
 
@@ -236,7 +250,7 @@ export class StremioCatalog {
     ]
     return {
       id: ADDON_ID,
-      version: '0.1.2',
+      version: '0.1.3',
       name: 'Crunchyroll',
       description: 'Your Crunchyroll home, watchlist and catalogue.',
       logo: CRUNCHYROLL_ICON,
@@ -254,8 +268,11 @@ export class StremioCatalog {
     const content = this.app.content
     if (id === 'cr-hero') {
       const cards = await content.hero()
-      const next = await Promise.all(cards.map((card) => content.upNext(card.contentId).catch(() => undefined)))
-      return cards.map((card, index) => withResume(heroMeta(card), next[index]))
+      const [next, objects] = await Promise.all([
+        Promise.all(cards.map((card) => content.upNext(card.contentId).catch(() => undefined))),
+        content.objects(cards.map((card) => card.contentId)).catch(() => new Map<string, CrPanel>()),
+      ])
+      return cards.map((card, index) => withResume(withFacts(heroMeta(card), objects.get(card.contentId)), next[index]))
     }
     if (id === 'cr-search') return search ? collect(await content.search(search)) : []
     const paged = PAGED[id]

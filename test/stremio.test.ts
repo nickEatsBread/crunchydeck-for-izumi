@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { feedRows, heroCards, panels, pickImage } from '../src/cr/content.js'
-import { audioLabel, episodeLabel, heroMeta, metaPreview, parseExtra, pickSeasons, ratingOf, stripPrefix, videoOf, withResume } from '../src/stremio.js'
+import { audioLabel, episodeLabel, heroMeta, metaPreview, parseExtra, pickSeasons, ratingOf, stripPrefix, videoOf, withFacts, withResume } from '../src/stremio.js'
 
 const images = (kind: string) => ({ [kind]: [[{ source: `https://img/${kind}/320`, width: 320 }, { source: `https://img/${kind}/640`, width: 640 }, { source: `https://img/${kind}/1920`, width: 1920 }]] })
 
@@ -32,6 +32,14 @@ test('hero cards are collected from the server-driven tree once each', () => {
   assert.equal(meta.id, 'cr:G1')
   assert.equal(meta.logo, 'https://imgsrv.crunchyroll.com/cdn-cgi/image/format=auto,width=600/logo.png')
   assert.equal(meta.background, 'https://imgsrv.crunchyroll.com/cdn-cgi/image/format=auto,width=1920/wide.jpg')
+})
+
+test('a featured title carries its rating, Sub | Dub and genres', () => {
+  const meta = heroMeta({ contentId: 'G1', title: 'One' })
+  const [panel] = panels([{ id: 'G1', type: 'series', series_metadata: { is_subbed: true, is_dubbed: true, maturity_ratings: ['TV-14'], tenant_categories: ['drama', 'romance'] } }])
+  const out = withFacts(meta, panel)
+  assert.deepEqual([out.genres, out.izumi], [['Drama', 'Romance'], { rating: '14+', audio: 'Sub | Dub' }])
+  assert.equal(withFacts(meta, undefined), meta)
 })
 
 test('a featured title the viewer started resumes from the banner', () => {
@@ -66,7 +74,7 @@ test('a series panel becomes a poster meta with rating, audio and genres', () =>
   assert.deepEqual(meta, {
     id: 'cr:G1', type: 'series', name: 'One', description: 'd',
     poster: 'https://img/poster_tall/640', background: 'https://img/poster_wide/1920',
-    genres: ['Action', 'Slice-Of-Life'], releaseInfo: '2020',
+    genres: ['Action', 'Slice Of Life'], releaseInfo: '2020',
     izumi: { rating: '14+', audio: 'Sub | Dub' },
   })
 })

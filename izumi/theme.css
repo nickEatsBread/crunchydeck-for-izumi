@@ -51,6 +51,7 @@
   border-radius: 9999px;
   background: var(--cd-brand);
 }
+[data-slot="nav.drawer"] [data-part="nav.item"][data-variant="screen"][data-active]::before { content: none; }
 [data-slot="nav.drawer"] [data-part="nav.item"][data-active]::after {
   content: '';
   margin-left: auto;
@@ -123,7 +124,7 @@
   max-width: 48%;
   gap: 0;
 }
-[data-part="cd-hero-logo"] { width: 70%; height: calc(96 * var(--cd)); margin-bottom: calc(16 * var(--cd)); overflow: visible; filter: drop-shadow(0 10px 8px rgb(0 0 0 / 0.04)) drop-shadow(0 4px 3px rgb(0 0 0 / 0.1)); }
+[data-part="cd-hero-logo"] { width: 70% !important; height: calc(96 * var(--cd)); margin-bottom: calc(16 * var(--cd)); overflow: visible; filter: drop-shadow(0 10px 8px rgb(0 0 0 / 0.04)) drop-shadow(0 4px 3px rgb(0 0 0 / 0.1)); }
 [data-part="cd-hero-logo"] img { object-fit: contain; object-position: left bottom; }
 [data-part="cd-hero-title"] { margin-bottom: calc(12 * var(--cd)); font-size: calc(36 * var(--cd)); font-weight: 900; line-height: 1.1; text-shadow: 0 2px 8px rgb(0 0 0 / 0.5); }
 [data-part="cd-hero-meta"] {
@@ -159,18 +160,18 @@
 }
 [data-part="cd-hero-actions"] { gap: calc(12 * var(--cd)); align-items: center; }
 [data-part="cd-play"], [data-part="cd-details"] {
-  min-height: 0;
-  gap: calc(8 * var(--cd));
-  border-radius: calc(8 * var(--cd));
-  font-size: calc(16 * var(--cd));
+  min-height: 0 !important;
+  gap: calc(8 * var(--cd)) !important;
+  border-radius: calc(8 * var(--cd)) !important;
+  font-size: calc(16 * var(--cd)) !important;
   line-height: 1.5;
   transition: box-shadow 150ms, background-color 150ms;
 }
-[data-part="cd-play"] { padding: calc(12 * var(--cd)) calc(28 * var(--cd)); background: var(--cd-brand); color: #000; font-weight: 700; }
+[data-part="cd-play"] { padding: calc(12 * var(--cd)) calc(28 * var(--cd)) !important; background: var(--cd-brand) !important; color: #000 !important; font-weight: 700 !important; }
 [data-part="cd-play"] svg { width: calc(18 * var(--cd)); height: calc(18 * var(--cd)); }
-[data-part="cd-details"] { padding: calc(12 * var(--cd)) calc(20 * var(--cd)); background: rgb(255 255 255 / 0.15); color: #fff; font-weight: 600; }
-[data-part="cd-play"]:is(:focus-visible, :hover) { outline: none; filter: none; box-shadow: 0 0 0 calc(4 * var(--cd)) rgb(255 255 255 / 0.4); }
-[data-part="cd-details"]:is(:focus-visible, :hover) { outline: none; filter: none; background: rgb(255 255 255 / 0.3); box-shadow: 0 0 0 calc(4 * var(--cd)) rgb(255 255 255 / 0.3); }
+[data-part="cd-details"] { padding: calc(12 * var(--cd)) calc(20 * var(--cd)) !important; background: rgb(255 255 255 / 0.15) !important; color: #fff !important; font-weight: 600 !important; }
+[data-part="cd-play"]:is(:focus, :focus-visible, :hover) { outline: none !important; filter: none !important; box-shadow: 0 0 0 calc(4 * var(--cd)) rgb(255 255 255 / 0.4); }
+[data-part="cd-details"]:is(:focus, :focus-visible, :hover) { outline: none !important; filter: none !important; background: rgb(255 255 255 / 0.3) !important; box-shadow: 0 0 0 calc(4 * var(--cd)) rgb(255 255 255 / 0.3); }
 [data-slot="home.hero"] [data-part="hero.indicator"] {
   position: absolute;
   inset: auto calc(24 * var(--cd)) calc(16 * var(--cd)) auto;
@@ -187,20 +188,24 @@
   transition: width 300ms, background-color 300ms;
 }
 [data-slot="home.hero"] [data-part="hero.dot"][data-active] [data-part="hero.dot.track"] { width: calc(40 * var(--cd)); background: rgb(255 255 255 / 0.3); }
+/* The arrows only show while the pointer is over the banner, as in Crunchy Deck. */
 [data-slot="home.hero"] [data-part="hero.edge"] {
   width: calc(48 * var(--cd));
   height: calc(48 * var(--cd));
   border-radius: 9999px;
   background: rgb(0 0 0 / 0.5);
   color: #fff;
+  opacity: 0 !important;
+  transition: opacity 200ms;
 }
+[data-slot="home.hero"]:hover [data-part="hero.edge"] { opacity: 1 !important; }
 
 /* ---- Rows and cards ----------------------------------------------------------------------- */
 [data-slot="home"] [data-slot="row"] { margin-bottom: calc(20 * var(--cd)); }
 [data-slot="row"] [data-part="row.header"] { margin-bottom: calc(6 * var(--cd)); padding-inline: calc(40 * var(--cd)); }
 [data-slot="row"] [data-part="row.title"] { color: rgb(255 255 255 / 0.8); font-size: calc(18 * var(--cd)); font-weight: 700; line-height: 1.55; }
 [data-slot="row"] [data-part="row.track"] {
-  gap: calc(16 * var(--cd));
+  gap: calc(16 * var(--cd)) !important;
   padding: calc(8 * var(--cd)) calc(40 * var(--cd)) calc(32 * var(--cd));
   scroll-padding-inline: calc(40 * var(--cd));
 }
@@ -217,6 +222,7 @@
 }
 [data-part="card"] [data-part="card.art"] { height: calc(290 * var(--cd)); aspect-ratio: auto !important; border-radius: 0; background: var(--cd-s2); }
 [data-part="card"][data-shape="episode"] [data-part="card.art"] { height: calc(150 * var(--cd)); }
+[data-part="card"] [data-part="card.art"] { z-index: auto !important; transform: none !important; box-shadow: none !important; outline: none !important; }
 [data-part="card"] [data-part="card.art"] img { transform: none !important; }
 [data-part="card"] a > div:has(> [data-part="card.title"]) {
   position: absolute;
@@ -225,6 +231,7 @@
   flex-direction: column-reverse;
   min-height: 0;
   padding: calc(24 * var(--cd)) calc(8 * var(--cd)) calc(8 * var(--cd));
+  z-index: 2;
   pointer-events: none;
   background-image: linear-gradient(to top, rgb(0 0 0 / 0.9), transparent);
 }
@@ -234,12 +241,34 @@
 [data-part="card"]:not([data-shape="episode"]) [data-part="card.meta"] { display: none; }
 [data-part="card.score"], [data-part="card.badge"] { display: none; }
 [data-part="card.progress"] { z-index: 5; height: calc(4 * var(--cd)); background: rgb(255 255 255 / 0.25); }
-[data-part="card"] > a:is(:focus-visible, :hover) {
-  outline: none;
+[data-part="card"] > a:is(:focus, :focus-visible, :hover) {
+  outline: none !important;
   transform: scale(1.05);
-  box-shadow: 0 0 0 3px var(--cd-brand), 0 14px 34px rgb(0 0 0 / 0.65);
+  box-shadow: 0 0 0 3px var(--cd-brand), 0 14px 34px rgb(0 0 0 / 0.65) !important;
 }
 [data-slot="row"]:focus-within [data-part="card"] > a:not(:focus):not(:hover) { opacity: 0.82; }
+[data-part="card.progress"] { z-index: 3; }
+/* The play affordance over the focused card. */
+[data-part="card"] > a [data-part="card.art"]::after {
+  content: '▶';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: calc(48 * var(--cd));
+  height: calc(48 * var(--cd));
+  place-items: center;
+  padding-left: calc(2 * var(--cd));
+  border-radius: 9999px;
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  font-size: calc(20 * var(--cd));
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition: opacity 150ms;
+  pointer-events: none;
+}
+[data-part="card"] > a:is(:focus, :focus-visible, :hover) [data-part="card.art"]::after { opacity: 1; }
 
 /* ---- Title page --------------------------------------------------------------------------- */
 [data-slot="detail.banner"] { height: 58vh; min-height: 58vh !important; }
@@ -306,9 +335,13 @@
 [data-part="season.label"] { font-size: inherit; font-weight: inherit; }
 [data-part="season.year"] { display: none; }
 [data-part="season"]:is(:focus-visible, :hover) { outline: none; box-shadow: 0 0 0 2px var(--cd-brand); }
+/* Crunchy Deck's grid-cols-2 md:grid-cols-3 xl:grid-cols-4: three across on the Deck, four on a wide window. */
 [data-slot="detail.episodes"] [data-part="episodes.grid"] {
-  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   gap: calc(28 * var(--cd)) calc(20 * var(--cd)) !important;
+}
+@media (min-width: 1280px) {
+  :scope:not(.gamemode) [data-slot="detail.episodes"] [data-part="episodes.grid"] { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
 }
 [data-part="episode"][data-variant="template"] { overflow: visible; border-radius: 0; background: transparent; outline: none; }
 [data-part="cd-ep-art"] { overflow: hidden; border-radius: calc(12 * var(--cd)); background: var(--cd-s2); transition: box-shadow 150ms; }
