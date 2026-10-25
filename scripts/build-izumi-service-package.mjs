@@ -4,13 +4,33 @@ import { arch, platform } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
+// node scripts/build-izumi-service-package.mjs [--target <os>-<arch>]
+// Builds for this machine by default. --target cross-compiles (linux-x86_64, windows-x86_64,
+// macos-aarch64, ...), so one machine can build every platform's package. The signing key comes
+// from IZUMI_SIGNING_KEY (an Ed25519 PKCS#8 PEM) when set, so CI signs with the same key every time;
+// izumi refuses a package whose signer changed. Otherwise a local key in .data/ is used.
 const root = resolve(import.meta.dirname, '..')
 const dist = join(root, 'dist')
-const stage = join(dist, 'izumi-service-package')
 const keyDir = join(root, '.data')
 const keyPath = join(keyDir, 'service-signing-key.pem')
-const windows = platform() === 'win32'
-const platformName = `${windows ? 'windows' : platform() === 'darwin' ? 'macos' : 'linux'}-${arch() === 'arm64' ? 'aarch64' : 'x86_64'}`
+const hostWindows = platform() === 'win32'
+const hostPlatform = `${hostWindows ? 'windows' : platform() === 'darwin' ? 'macos' : 'linux'}-${arch() === 'arm64' ? 'aarch64' : 'x86_64'}`
+const targetFlag = process.argv.indexOf('--target')
+const platformName = targetFlag > 0 ? process.argv[targetFlag + 1] ?? '' : hostPlatform
+const BUN_TARGETS = {
+  'linux-x86_64': 'bun-linux-x64',
+  'linux-aarch64': 'bun-linux-arm64',
+  'windows-x86_64': 'bun-windows-x64',
+  'macos-x86_64': 'bun-darwin-x64',
+  'macos-aarch64': 'bun-darwin-arm64',
+}
+if (!BUN_TARGETS[platformName]) {
+  console.error(`Unknown target ${platformName}. Use one of: ${Object.keys(BUN_TARGETS).join(', ')}`)
+  process.exit(2)
+}
+const windows = platformName.startsWith('windows-')
+const stage = join(dist, `izumi-service-package-${platformName}`)
+const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const entry = windows ? 'service.exe' : 'service'
 const executable = join(stage, entry)
 const output = join(dist, `crunchyroll-${platformName}.izumi-ext`)
@@ -34,8 +54,9 @@ rmSync(stage, { recursive: true, force: true })
 mkdirSync(stage, { recursive: true })
 mkdirSync(keyDir, { recursive: true })
 
-run(windows ? 'bun.exe' : 'bun', [
-  'build', '--compile', ...(windows ? ['--windows-hide-console'] : []),
+run(hostWindows ? 'bun.exe' : 'bun', [
+  'build', '--compile', `--target=${BUN_TARGETS[platformName]}`,
+  ...(windows && hostWindows ? ['--windows-hide-console'] : []),
   'src/compiled-main.ts', '--outfile', executable,
 ])
 
@@ -44,7 +65,7 @@ const manifest = {
   runtimeAbi: 1,
   id: 'crunchyroll.izumi',
   name: 'Crunchyroll',
-  version: '0.1.2',
+  version,
   entry,
   execution: { backend: 'izumi-service', status: 'compatible' },
   sources: [{
@@ -67,11 +88,11 @@ const integrity = {
 }
 writeFileSync(join(stage, 'integrity.json'), `${JSON.stringify(integrity, null, 2)}\n`)
 
-if (!existsSync(keyPath)) {
+if (!process.env.IZUMI_SIGNING_KEY && !existsSync(keyPath)) {
   const { privateKey } = generateKeyPairSync('ed25519')
   writeFileSync(keyPath, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 })
 }
-const privateKey = readFileSync(keyPath)
+const privateKey = process.env.IZUMI_SIGNING_KEY ? Buffer.from(process.env.IZUMI_SIGNING_KEY) : readFileSync(keyPath)
 const publicKey = (await import('node:crypto')).createPublicKey(privateKey)
 const signature = {
   algorithm: 'Ed25519',
@@ -82,7 +103,7 @@ const signature = {
 writeFileSync(join(stage, 'signature.json'), `${JSON.stringify(signature, null, 2)}\n`)
 
 rmSync(output, { force: true })
-if (windows) {
+if (hostWindows) {
   const zip = `${output}.zip`
   rmSync(zip, { force: true })
   const quote = (value) => value.replaceAll("'", "''")

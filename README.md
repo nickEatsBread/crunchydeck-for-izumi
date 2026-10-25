@@ -31,7 +31,37 @@ This source copies that model:
   Chromium page (HTTP/2 + HTTP/3). Otherwise it falls back to Node HTTP/2 with
   the same headers. Force a stack with `CR_HTTP=chrome` or `CR_HTTP=fetch`.
 
-## Add it to Izumi
+## Set up izumi with the Crunchy Deck pack
+
+The easiest way in. One link sets izumi up for Crunchyroll: it installs this source and the Crunchy
+Deck theme, plays the Crunchyroll intro when izumi starts, and asks you to sign in. On Linux and the
+Steam Deck it also downloads Google's Widevine module in the background, which izumi needs to play
+Crunchyroll's protected video there. Windows plays protected video without it.
+
+- **Already have izumi (0.1.75 or newer):** open
+  `izumi://pack?url=https://raw.githubusercontent.com/nickEatsBread/crunchydeck-for-izumi/main/izumi/pack.json`,
+  or paste the pack link into **Settings → Sources and store → Set up from a pack**.
+- **Steam Deck, starting from scratch:** in Desktop Mode, open a terminal and run
+
+  ```
+  curl -fsSL https://flatpak.izumi.watch/install.sh | bash -s -- --pack=https://raw.githubusercontent.com/nickEatsBread/crunchydeck-for-izumi/main/izumi/pack.json
+  ```
+
+  izumi installs, and the next time it opens it shows the pack for you to set up.
+
+izumi shows everything the pack adds before anything is installed. Nothing happens until you choose
+**Set up with Crunchy Deck**.
+
+> **Google's Widevine licence.** By setting up this pack on Linux (including the Steam Deck), you
+> accept the licence that Google ships with its Widevine content decryption module. izumi then
+> downloads the module from Google, in the background, the same way browsers fetch it. The module is
+> never bundled in this repository, the pack or izumi. You can remove it any time in izumi under
+> **Settings → Playback → Protected video**.
+
+The pack's files live in [`izumi/`](izumi/). `scripts/build-izumi-store.mjs` regenerates
+`store.json` and `pack.json` from the built packages.
+
+## Add it to Izumi by hand
 
 1. `npm install`
 2. `npm start`

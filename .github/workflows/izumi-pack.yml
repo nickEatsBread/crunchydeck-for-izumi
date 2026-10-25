@@ -1,0 +1,76 @@
+# Builds the izumi service packages for each platform, publishes them on the tag's release and
+# refreshes izumi/store.json and izumi/pack.json on main with their sizes and hashes.
+#
+# Needs the repository secret IZUMI_SIGNING_KEY: an Ed25519 private key in PKCS#8 PEM form, e.g.
+#   node -e "const {generateKeyPairSync}=require('crypto');process.stdout.write(generateKeyPairSync('ed25519').privateKey.export({type:'pkcs8',format:'pem'}))"
+# Keep the same key for every release: izumi refuses an update signed by a different key.
+name: izumi pack
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x86_64
+          - os: windows-latest
+            target: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+      - run: npm ci
+      - run: npm test
+      - name: Build the package
+        shell: bash
+        env:
+          IZUMI_SIGNING_KEY: ${{ secrets.IZUMI_SIGNING_KEY }}
+        run: |
+          test -n "$IZUMI_SIGNING_KEY" || { echo "Add the IZUMI_SIGNING_KEY repository secret first."; exit 1; }
+          node scripts/build-izumi-service-package.mjs --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.target }}
+          path: dist/*.izumi-ext
+
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          path: dist
+          merge-multiple: true
+      - name: Release the packages
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.izumi-ext --title "$GITHUB_REF_NAME" --notes "Service packages for izumi. Set izumi up with izumi/pack.json (see the README)."
+      - name: Refresh the store and pack
+        env:
+          IZUMI_REPO: ${{ github.repository }}
+          IZUMI_REF: main
+        run: node scripts/build-izumi-store.mjs
+      - name: Commit them
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add izumi/store.json izumi/pack.json
+          git diff --cached --quiet && exit 0
+          git commit -m "chore: izumi store and pack for ${GITHUB_REF_NAME}"
+          git push origin HEAD:main
