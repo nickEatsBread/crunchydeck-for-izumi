@@ -2,34 +2,35 @@
   "app": "izumi",
   "kind": "theme-package",
   "schemaVersion": 1,
-  "themeApi": 2,
+  "themeApi": 7,
   "id": "crunchy-deck",
   "name": "Crunchy Deck",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "author": "Crunchy Deck",
-  "description": "Crunchyroll orange on charcoal with square corners: a compact top bar, a tall featured backdrop with a bold Start Watching button, tight poster rows and episode stills.",
+  "description": "Crunchy Deck's look: Crunchyroll orange on near-black, a slide-in menu instead of a top bar or rail, a tall featured banner with the title logo, Sub | Dub and the age rating, cards with their titles on the artwork, and season pills over an episode grid.",
   "design": {
     "tokens": {
       "scheme": "dark",
-      "background": "228 11% 9%",
+      "background": "0 0% 4%",
       "foreground": "0 0% 100%",
-      "muted": "225 8% 14%",
-      "mutedForeground": "220 6% 63%",
-      "primary": "24 90% 54%",
+      "muted": "0 0% 12%",
+      "mutedForeground": "0 0% 55%",
+      "primary": "24 91% 54%",
       "primaryForeground": "0 0% 0%",
-      "secondary": "225 8% 14%",
+      "secondary": "0 0% 12%",
       "secondaryForeground": "0 0% 100%",
-      "accent": "225 8% 18%",
+      "accent": "0 0% 16%",
       "accentForeground": "0 0% 100%",
-      "border": "225 8% 20%",
-      "input": "225 8% 14%",
-      "ring": "24 90% 54%",
-      "card": "225 8% 12%",
+      "border": "0 0% 16%",
+      "input": "0 0% 12%",
+      "ring": "24 91% 54%",
+      "card": "0 0% 8%",
       "cardForeground": "0 0% 100%",
-      "theme": "24 90% 54%"
+      "theme": "24 91% 54%"
     },
-    "radius": 0.25,
+    "radius": 0.75,
     "font": "nunito",
+    "fonts": { "ui": "nunito", "heading": "nunito", "display": "nunito" },
     "fontScale": 1,
     "backdrop": "solid",
     "backdropStrength": 0,
@@ -38,358 +39,59 @@
       "density": "comfortable",
       "trueBlack": false,
       "hideCardLabels": false,
-      "shell": {
-        "nav": "top",
-        "compact": true,
-        "overlay": "none",
-        "press": "none"
-      },
-      "player": {
-        "seekbarHeight": 4,
-        "seekbarColor": "theme"
-      },
+      "cardPreview": "none",
+      "shell": { "nav": "drawer", "compact": false, "overlay": "none", "press": "none" },
       "hero": {
-        "height": 60,
-        "mobileHeight": 50,
+        "height": 66,
         "rotate": true,
-        "interval": 10,
+        "interval": 7,
         "rankHidden": true,
+        "limit": 7,
+        "transition": "fade",
+        "indicator": { "style": "bars", "position": "end", "color": "#F47521", "past": "empty" },
         "template": {
           "type": "overlay",
-          "style": {
-            "minHeight": 380
-          },
+          "part": "cd-hero",
           "children": [
-            {
-              "type": "artwork",
-              "artwork": "backdrop",
-              "style": {
-                "anchor": "fill",
-                "fit": "cover"
-              }
-            },
+            { "type": "artwork", "artwork": "backdrop", "part": "cd-hero-art", "style": { "anchor": "fill", "fit": "cover" } },
             {
               "type": "stack",
-              "style": {
-                "anchor": "bottom-start",
-                "padding": 40,
-                "gap": 12,
-                "maxWidth": 760
-              },
+              "part": "cd-hero-body",
+              "style": { "anchor": "bottom-start" },
               "children": [
-                {
-                  "type": "text",
-                  "field": "title",
-                  "style": {
-                    "color": "#FFFFFF",
-                    "fontSize": 46,
-                    "fontWeight": 900,
-                    "lines": 2
-                  }
-                },
+                { "type": "artwork", "artwork": "logo", "part": "cd-hero-logo", "when": { "field": "logo" }, "style": { "fit": "contain" } },
+                { "type": "text", "field": "title", "part": "cd-hero-title", "when": { "field": "logo", "absent": true } },
                 {
                   "type": "row",
-                  "style": {
-                    "gap": 8,
-                    "align": "center"
-                  },
+                  "part": "cd-hero-meta",
                   "children": [
+                    { "type": "text", "field": "ageRating", "part": "cd-rating", "when": { "field": "ageRating" } },
+                    { "type": "text", "text": "◆", "part": "cd-sep", "when": { "field": "audio" } },
+                    { "type": "text", "field": "audio", "part": "cd-meta-text", "when": { "field": "audio" } },
+                    { "type": "text", "text": "◆", "part": "cd-sep", "when": { "field": "genre" } },
                     {
-                      "type": "text",
-                      "field": "score",
-                      "when": {
-                        "field": "score"
-                      },
-                      "style": {
-                        "color": "#F47521",
-                        "fontSize": 14,
-                        "fontWeight": 800
-                      }
-                    },
-                    {
-                      "type": "text",
-                      "field": "format",
-                      "when": {
-                        "field": "format"
-                      },
-                      "style": {
-                        "color": "#DADADA",
-                        "fontSize": 14,
-                        "fontWeight": 700
-                      }
-                    },
-                    {
-                      "type": "text",
-                      "field": "episodeCount",
-                      "when": {
-                        "field": "episodeCount"
-                      },
-                      "style": {
-                        "color": "#DADADA",
-                        "fontSize": 14
-                      }
-                    },
-                    {
-                      "type": "text",
-                      "text": "Episodes",
-                      "when": {
-                        "field": "episodeCount"
-                      },
-                      "style": {
-                        "color": "#DADADA",
-                        "fontSize": 14
-                      }
-                    },
-                    {
-                      "type": "text",
-                      "field": "genres",
-                      "when": {
-                        "field": "genres"
-                      },
-                      "style": {
-                        "color": "#A0A0A0",
-                        "fontSize": 14
-                      }
+                      "type": "row",
+                      "part": "cd-genres",
+                      "when": { "field": "genre" },
+                      "children": [
+                        { "type": "text", "field": "genre", "part": "cd-meta-text" },
+                        { "type": "text", "text": ",", "part": "cd-meta-text", "when": { "field": "genre2" } },
+                        { "type": "text", "field": "genre2", "part": "cd-meta-text", "when": { "field": "genre2" } },
+                        { "type": "text", "text": ",", "part": "cd-meta-text", "when": { "field": "genre3" } },
+                        { "type": "text", "field": "genre3", "part": "cd-meta-text", "when": { "field": "genre3" } }
+                      ]
                     }
                   ]
                 },
-                {
-                  "type": "text",
-                  "field": "description",
-                  "when": {
-                    "field": "description"
-                  },
-                  "style": {
-                    "color": "#DADADA",
-                    "fontSize": 15,
-                    "maxWidth": 620,
-                    "lines": 2
-                  }
-                },
+                { "type": "text", "field": "description", "part": "cd-hero-synopsis", "when": { "field": "description" } },
                 {
                   "type": "row",
-                  "style": {
-                    "gap": 10,
-                    "align": "center"
-                  },
+                  "part": "cd-hero-actions",
                   "children": [
-                    {
-                      "type": "action",
-                      "action": "play",
-                      "text": "Start Watching",
-                      "style": {
-                        "background": "#F47521",
-                        "color": "#000000",
-                        "minHeight": 44,
-                        "radius": 2,
-                        "fontWeight": 900
-                      }
-                    },
-                    {
-                      "type": "action",
-                      "action": "list",
-                      "text": "Add to Watchlist",
-                      "style": {
-                        "background": "transparent",
-                        "color": "#F47521",
-                        "minHeight": 44,
-                        "radius": 2,
-                        "fontWeight": 800
-                      }
-                    },
-                    {
-                      "type": "action",
-                      "action": "details",
-                      "text": "Details",
-                      "style": {
-                        "background": "#FFFFFF1A",
-                        "color": "#FFFFFF",
-                        "minHeight": 44,
-                        "radius": 2,
-                        "fontWeight": 800
-                      }
-                    }
+                    { "type": "action", "action": "play", "text": "Continue", "part": "cd-play", "when": { "field": "progress" } },
+                    { "type": "action", "action": "play", "text": "Start Watching", "part": "cd-play", "when": { "field": "progress", "absent": true } },
+                    { "type": "action", "action": "details", "text": "Details", "part": "cd-details" }
                   ]
-                }
-              ]
-            }
-          ]
-        }
-      },
-      "rows": {
-        "defaults": {
-          "layout": "carousel",
-          "width": 168,
-          "gap": 16,
-          "spacing": 36,
-          "radius": 2,
-          "titleSize": 18,
-          "aspect": "poster"
-        },
-        "byId": {
-          "continue": {
-            "layout": "carousel",
-            "width": 300,
-            "aspect": "landscape",
-            "radius": 2,
-            "gap": 16
-          }
-        }
-      },
-      "cards": {
-        "poster": {
-          "type": "stack",
-          "style": {
-            "gap": 8
-          },
-          "children": [
-            {
-              "type": "artwork",
-              "artwork": "poster",
-              "style": {
-                "aspect": "2 / 3",
-                "radius": 2,
-                "fit": "cover"
-              }
-            },
-            {
-              "type": "text",
-              "field": "title",
-              "style": {
-                "fontWeight": 700,
-                "fontSize": 14,
-                "lines": 2
-              }
-            },
-            {
-              "type": "row",
-              "style": {
-                "gap": 6,
-                "align": "center"
-              },
-              "children": [
-                {
-                  "type": "text",
-                  "field": "format",
-                  "when": {
-                    "field": "format"
-                  },
-                  "style": {
-                    "color": "muted-foreground",
-                    "fontSize": 12
-                  }
-                },
-                {
-                  "type": "text",
-                  "field": "status",
-                  "when": {
-                    "field": "status"
-                  },
-                  "style": {
-                    "color": "muted-foreground",
-                    "fontSize": 12
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        "continue": {
-          "type": "stack",
-          "style": {
-            "gap": 8
-          },
-          "children": [
-            {
-              "type": "overlay",
-              "children": [
-                {
-                  "type": "artwork",
-                  "artwork": "still",
-                  "style": {
-                    "aspect": "16 / 9",
-                    "radius": 2,
-                    "fit": "cover"
-                  }
-                },
-                {
-                  "type": "text",
-                  "field": "duration",
-                  "when": {
-                    "field": "duration"
-                  },
-                  "style": {
-                    "anchor": "bottom-end",
-                    "color": "#FFFFFF",
-                    "fontSize": 11,
-                    "fontWeight": 700,
-                    "background": "#000000CC",
-                    "radius": 2,
-                    "padding": 4
-                  }
-                },
-                {
-                  "type": "meter",
-                  "field": "progress",
-                  "when": {
-                    "field": "progress"
-                  },
-                  "style": {
-                    "anchor": "bottom-start",
-                    "minHeight": 4,
-                    "background": "#FFFFFF33"
-                  }
-                }
-              ]
-            },
-            {
-              "type": "text",
-              "field": "title",
-              "style": {
-                "fontWeight": 700,
-                "fontSize": 14,
-                "lines": 1
-              }
-            },
-            {
-              "type": "row",
-              "style": {
-                "gap": 6,
-                "align": "center",
-                "wrap": "nowrap"
-              },
-              "children": [
-                {
-                  "type": "text",
-                  "field": "episodeNumber",
-                  "style": {
-                    "color": "muted-foreground",
-                    "fontSize": 12,
-                    "fontWeight": 700
-                  }
-                },
-                {
-                  "type": "text",
-                  "text": "-",
-                  "when": {
-                    "field": "episodeTitle"
-                  },
-                  "style": {
-                    "color": "muted-foreground",
-                    "fontSize": 12
-                  }
-                },
-                {
-                  "type": "text",
-                  "field": "episodeTitle",
-                  "when": {
-                    "field": "episodeTitle"
-                  },
-                  "style": {
-                    "color": "muted-foreground",
-                    "fontSize": 12,
-                    "lines": 1
-                  }
                 }
               ]
             }
@@ -397,155 +99,46 @@
         }
       },
       "detail": {
-        "layout": "stack",
-        "bannerHidden": false,
-        "posterWidth": 200,
-        "bannerHeight": 34,
-        "cta": "large",
+        "layout": "overlay",
+        "title": "text",
+        "sections": { "mode": "stack", "tabs": ["episodes"], "unlisted": "hidden" },
         "episodes": {
-          "placement": "tab",
+          "seasons": "chips",
           "arrangement": "grid",
-          "hover": "none",
-          "order": "tabs",
-          "search": true,
+          "toolbar": "header",
           "card": {
             "type": "stack",
-            "style": {
-              "gap": 0
-            },
+            "part": "cd-ep",
             "children": [
               {
                 "type": "overlay",
+                "part": "cd-ep-art",
+                "style": { "aspect": "16 / 9" },
                 "children": [
+                  { "type": "artwork", "artwork": "still", "part": "cd-ep-still", "style": { "anchor": "fill", "fit": "cover" } },
+                  { "type": "text", "field": "watched", "part": "cd-ep-badge", "when": { "field": "watched" } },
                   {
-                    "type": "artwork",
-                    "artwork": "still",
-                    "style": {
-                      "aspect": "16 / 9",
-                      "radius": 2,
-                      "fit": "cover"
-                    }
-                  },
-                  {
-                    "type": "text",
-                    "field": "duration",
-                    "when": {
-                      "field": "duration"
-                    },
-                    "style": {
-                      "anchor": "bottom-end",
-                      "color": "#FFFFFF",
-                      "fontSize": 11,
-                      "fontWeight": 700,
-                      "background": "#000000CC",
-                      "radius": 2,
-                      "padding": 4
-                    }
-                  },
-                  {
-                    "type": "meter",
-                    "field": "progress",
-                    "when": {
-                      "field": "progress"
-                    },
-                    "style": {
-                      "anchor": "bottom-start",
-                      "minHeight": 4,
-                      "background": "#FFFFFF33"
-                    }
+                    "type": "stack",
+                    "part": "cd-ep-unwatched",
+                    "when": { "field": "watched", "absent": true },
+                    "children": [
+                      { "type": "text", "field": "duration", "part": "cd-ep-badge", "when": { "field": "duration" } },
+                      { "type": "meter", "field": "progress", "part": "cd-ep-progress", "when": { "field": "progress", "atMost": 99 } }
+                    ]
                   }
                 ]
               },
               {
-                "type": "stack",
-                "style": {
-                  "padding": 10,
-                  "gap": 8
-                },
+                "type": "row",
+                "part": "cd-ep-number",
                 "children": [
-                  {
-                    "type": "row",
-                    "style": {
-                      "gap": 6,
-                      "align": "center",
-                      "wrap": "nowrap"
-                    },
-                    "children": [
-                      {
-                        "type": "text",
-                        "field": "episodeNumber",
-                        "style": {
-                          "fontWeight": 800,
-                          "fontSize": 14,
-                          "shrink": 0
-                        }
-                      },
-                      {
-                        "type": "text",
-                        "text": "-",
-                        "style": {
-                          "color": "muted-foreground",
-                          "fontSize": 14
-                        }
-                      },
-                      {
-                        "type": "text",
-                        "field": "episodeTitle",
-                        "style": {
-                          "fontWeight": 800,
-                          "fontSize": 14,
-                          "lines": 1,
-                          "grow": 1
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "type": "text",
-                    "field": "description",
-                    "when": {
-                      "field": "description"
-                    },
-                    "style": {
-                      "color": "muted-foreground",
-                      "fontSize": 12,
-                      "lines": 2
-                    }
-                  }
+                  { "type": "text", "text": "Episode", "part": "cd-ep-number-text" },
+                  { "type": "text", "field": "episodeNo", "part": "cd-ep-number-text" }
                 ]
-              }
+              },
+              { "type": "text", "field": "episodeTitle", "part": "cd-ep-title" },
+              { "type": "text", "field": "description", "part": "cd-ep-synopsis", "when": { "field": "description" } }
             ]
-          }
-        }
-      },
-      "mobile": {
-        "hero": {
-          "height": 50
-        },
-        "rows": {
-          "defaults": {
-            "width": 120,
-            "gap": 10,
-            "spacing": 26,
-            "radius": 2,
-            "titleSize": 17
-          },
-          "byId": {
-            "continue": {
-              "layout": "carousel",
-              "width": 236,
-              "aspect": "landscape",
-              "radius": 2,
-              "gap": 10
-            }
-          }
-        },
-        "detail": {
-          "posterWidth": 120,
-          "bannerHeight": 28,
-          "episodes": {
-            "placement": "tab",
-            "arrangement": "list"
           }
         }
       }

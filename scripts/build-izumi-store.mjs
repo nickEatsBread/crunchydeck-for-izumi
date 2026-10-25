@@ -35,7 +35,12 @@ if (!Object.keys(builds).length) {
   process.exit(1)
 }
 
+// The theme's stylesheet is written in izumi/theme.css and folded into theme.json here, so the
+// published theme.json (and its hash below) always carries the current stylesheet.
 const theme = JSON.parse(readFileSync(join(dir, 'theme.json'), 'utf8'))
+theme.design.css = readFileSync(join(dir, 'theme.css'), 'utf8')
+writeFileSync(join(dir, 'theme.json'), `${JSON.stringify(theme, null, 2)}
+`)
 const store = {
   app: 'izumi',
   kind: 'store',
@@ -68,7 +73,7 @@ const store = {
       author: theme.author,
       description: theme.description,
       themeApi: theme.themeApi,
-      tags: ['Dark', 'Square', 'Top nav'],
+      tags: ['Dark', 'Drawer'],
       platforms: ['desktop', 'phone'],
       url: `${raw}/theme.json`,
       ...file(join(dir, 'theme.json')),
@@ -91,7 +96,8 @@ const pack = {
   minAppVersion: '0.1.75',
   stores: [{ url: `${raw}/store.json` }],
   items: [
-    { ref: 'source', kind: 'source', from: { store: `${raw}/store.json`, id: 'crunchyroll.izumi' } },
+    // The source's own catalog becomes a screen, and izumi opens on it.
+    { ref: 'source', kind: 'source', from: { store: `${raw}/store.json`, id: 'crunchyroll.izumi' }, screen: 'default' },
     { ref: 'look', kind: 'theme', from: { store: `${raw}/store.json`, id: theme.id }, apply: true },
   ],
   // izumi downloads Google's Widevine module in the background where it is needed (Linux); the

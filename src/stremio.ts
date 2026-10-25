@@ -4,6 +4,7 @@
 // that other clients ignore: ratings, Sub | Dub, playheads, the watchlist and where to report
 // progress.
 import type { CrunchyrollApp } from './app.js'
+import { CRUNCHYROLL_ICON } from './brand.js'
 import { curationUrl, pickImage, type CrPanel, type CrSeriesMetadata, type HeroCard } from './cr/content.js'
 import type { EpisodeItem, SeasonItem } from './cr/catalog.js'
 import { DEFAULT_LOCALE } from './cr/constants.js'
@@ -142,6 +143,26 @@ export function heroMeta(card: HeroCard): StremioMeta {
   }
 }
 
+/** A featured title the viewer has started: its banner says Continue and resumes that episode. */
+export function withResume(meta: StremioMeta, next: { panel: CrPanel; playhead: number; fullyWatched: boolean } | undefined): StremioMeta {
+  if (!next || next.fullyWatched || !(next.playhead > 0)) return meta
+  const episode = next.panel.episode_metadata ?? next.panel.movie_metadata
+  const durationSec = episode?.duration_ms ? episode.duration_ms / 1000 : undefined
+  return {
+    ...meta,
+    izumi: {
+      ...meta.izumi,
+      continue: {
+        videoId: PREFIX + next.panel.id,
+        label: next.panel.episode_metadata ? episodeLabel(episode?.season_number, episode?.episode_number ?? episode?.episode) : '',
+        // At least 1%, so a resume point always reads as one.
+        progress: durationSec ? Math.max(0.01, Math.min(1, next.playhead / durationSec)) : 0.01,
+        ...(durationSec ? { remainingSec: Math.max(0, Math.round(durationSec - next.playhead)) } : {}),
+      },
+    },
+  }
+}
+
 export function videoOf(episode: EpisodeItem & { number: number; guid: string }, season: number | undefined, playhead?: { playhead: number; fullyWatched: boolean }): StremioVideo {
   const durationSec = episode.duration_ms ? Math.round(episode.duration_ms / 1000) : undefined
   return {
@@ -218,6 +239,7 @@ export class StremioCatalog {
       version: '0.1.2',
       name: 'Crunchyroll',
       description: 'Your Crunchyroll home, watchlist and catalogue.',
+      logo: CRUNCHYROLL_ICON,
       resources: ['catalog', 'meta', 'stream'],
       types: ['series', 'movie'],
       idPrefixes: [PREFIX],
@@ -230,7 +252,11 @@ export class StremioCatalog {
     if (!this.signedIn()) return []
     const { skip, search } = parseExtra(extra)
     const content = this.app.content
-    if (id === 'cr-hero') return (await content.hero()).map(heroMeta)
+    if (id === 'cr-hero') {
+      const cards = await content.hero()
+      const next = await Promise.all(cards.map((card) => content.upNext(card.contentId).catch(() => undefined)))
+      return cards.map((card, index) => withResume(heroMeta(card), next[index]))
+    }
     if (id === 'cr-search') return search ? collect(await content.search(search)) : []
     const paged = PAGED[id]
     if (paged) return collect(await content.browse({ sort: paged.sort, seasonal: paged.seasonal, start: skip, n: 24 }))

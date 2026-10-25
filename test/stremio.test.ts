@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { feedRows, heroCards, panels, pickImage } from '../src/cr/content.js'
-import { audioLabel, episodeLabel, heroMeta, metaPreview, parseExtra, pickSeasons, ratingOf, stripPrefix, videoOf } from '../src/stremio.js'
+import { audioLabel, episodeLabel, heroMeta, metaPreview, parseExtra, pickSeasons, ratingOf, stripPrefix, videoOf, withResume } from '../src/stremio.js'
 
 const images = (kind: string) => ({ [kind]: [[{ source: `https://img/${kind}/320`, width: 320 }, { source: `https://img/${kind}/640`, width: 640 }, { source: `https://img/${kind}/1920`, width: 1920 }]] })
 
@@ -32,6 +32,14 @@ test('hero cards are collected from the server-driven tree once each', () => {
   assert.equal(meta.id, 'cr:G1')
   assert.equal(meta.logo, 'https://imgsrv.crunchyroll.com/cdn-cgi/image/format=auto,width=600/logo.png')
   assert.equal(meta.background, 'https://imgsrv.crunchyroll.com/cdn-cgi/image/format=auto,width=1920/wide.jpg')
+})
+
+test('a featured title the viewer started resumes from the banner', () => {
+  const meta = heroMeta({ contentId: 'G1', title: 'One' })
+  const [panel] = panels([{ id: 'E2', type: 'episode', episode_metadata: { series_id: 'G1', season_number: 1, episode_number: 2, duration_ms: 1_200_000 } }])
+  assert.deepEqual(withResume(meta, { panel: panel!, playhead: 300, fullyWatched: false }).izumi?.continue, { videoId: 'cr:E2', label: 'S1 E2', progress: 0.25, remainingSec: 900 })
+  assert.equal(withResume(meta, { panel: panel!, playhead: 0, fullyWatched: false }), meta)
+  assert.equal(withResume(meta, { panel: panel!, playhead: 1200, fullyWatched: true }), meta)
 })
 
 test('images pick the smallest variant wide enough', () => {
