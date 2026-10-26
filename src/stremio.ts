@@ -236,8 +236,9 @@ const PAGED: Record<string, { name: string; sort: 'popularity' | 'newly_added'; 
   'cr-simulcast': { name: 'Simulcast season', sort: 'popularity', seasonal: true },
 }
 
-/** How long a meta waits for AniList on a series it has not placed yet. */
-const TRACK_WAIT_MS = 2500
+/** How long a meta waits for AniList on a series it has not placed yet: not at all. The lookup runs
+ *  on in the background and the next meta carries its ids; izumi finds the title by name until then. */
+const TRACK_WAIT_MS = 0
 
 function trackIdService(): TrackIdService {
   const file = () => join(dataDir(), 'anime-ids.json')
@@ -306,11 +307,13 @@ export class StremioCatalog {
     const contentId = stripPrefix(id)
     if (!contentId || !this.signedIn()) return undefined
     const content = this.app.content
-    const object = await content.object(contentId)
+    // What needs only the id starts at once: the page waits on the slowest call, not on their sum.
+    const upNextP = content.upNext(contentId).catch(() => undefined)
+    const watchlistP = content.inWatchlist(contentId).catch(() => undefined)
+    const [object, audio] = await Promise.all([content.object(contentId), content.preferredAudio()])
     if (!object) return undefined
     const preview = metaPreview(object)
     if (!preview) return undefined
-    const audio = await content.preferredAudio()
     const videos: StremioVideo[] = []
     const episodes: Array<{ episode: EpisodeItem & { number: number; guid: string }; season?: number }> = []
     if (object.type === 'series') {
@@ -345,10 +348,7 @@ export class StremioCatalog {
         if (track) video.izumi = { ...video.izumi, track }
       }
     }
-    const [upNext, inWatchlist] = await Promise.all([
-      content.upNext(contentId).catch(() => undefined),
-      content.inWatchlist(contentId).catch(() => undefined),
-    ])
+    const [upNext, inWatchlist] = await Promise.all([upNextP, watchlistP])
     const next = upNext && !upNext.fullyWatched ? upNext.panel : undefined
     return {
       ...preview,

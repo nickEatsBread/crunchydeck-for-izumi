@@ -291,11 +291,13 @@ export class Content {
 
   async playheads(contentIds: string[]): Promise<Map<string, Playhead>> {
     const out = new Map<string, Playhead>()
-    for (let i = 0; i < contentIds.length; i += 50) {
-      const batch = contentIds.slice(i, i + 50)
-      const json = await this.request<{ data?: Array<{ content_id?: string; playhead?: number; fully_watched?: boolean }> }>(
-        `/content/v2/${this.account()}/playheads?content_ids=${batch.map(encodeURIComponent).join(',')}&locale=${DEFAULT_LOCALE}`,
-      )
+    const batches: string[][] = []
+    for (let i = 0; i < contentIds.length; i += 50) batches.push(contentIds.slice(i, i + 50))
+    // In parallel: a long series is many batches, and one after another they held its page up.
+    const replies = await Promise.all(batches.map((batch) => this.request<{ data?: Array<{ content_id?: string; playhead?: number; fully_watched?: boolean }> }>(
+      `/content/v2/${this.account()}/playheads?content_ids=${batch.map(encodeURIComponent).join(',')}&locale=${DEFAULT_LOCALE}`,
+    )))
+    for (const json of replies) {
       for (const item of json?.data ?? []) {
         if (item.content_id) out.set(item.content_id, { playhead: Number(item.playhead) || 0, fullyWatched: !!item.fully_watched })
       }
