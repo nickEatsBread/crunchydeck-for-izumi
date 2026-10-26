@@ -373,7 +373,8 @@
 }
 [data-part="cd-ep-progress"] > span { background: var(--cd-brand); }
 /* Crunchy Deck's selected episode: a dark veil with a round play (or replay) button. */
-[data-part="cd-ep-hover"] { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(0 0 0 / 0.35); opacity: 0; transition: opacity 150ms; }
+/* A template stack is laid out inline as a flex column filling the artwork: centre it both ways. */
+[data-part="cd-ep-hover"] { justify-content: center !important; align-items: center !important; background: rgb(0 0 0 / 0.35); opacity: 0; transition: opacity 150ms; }
 [data-part="episode"]:is(:focus-visible, :hover) [data-part="cd-ep-hover"] { opacity: 1; }
 [data-part="cd-ep-play"] { display: grid; width: calc(48 * var(--cd)); height: calc(48 * var(--cd)); place-items: center; border-radius: 9999px; background: rgb(0 0 0 / 0.6); color: #fff; font-size: calc(20 * var(--cd)); line-height: 1; }
 /* Downloads: the status over the artwork's corner, progress along its bottom like the watch bar. */
