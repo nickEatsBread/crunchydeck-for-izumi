@@ -69,9 +69,12 @@ export interface SettingsAccount {
   switchProfile?(profileId: string): Promise<AccountStatus>
 }
 
+/** Only a TV sign-in (TV code, or email and password) can switch profiles: the cookie grant cannot. */
+const canSwitch = (status: AccountStatus, profiles: CrProfile[]) => status.authenticated && status.profile === 'tv' && profiles.length > 1
+
 function accountActions(status: AccountStatus, profiles: CrProfile[]): ServiceSettingOption[] {
   return [
-    ...(status.authenticated && profiles.length > 1 ? [{
+    ...(canSwitch(status, profiles) ? [{
       value: 'profile',
       label: "Choose who's watching",
       description: 'Switch to another profile on this Crunchyroll account.',
@@ -171,7 +174,7 @@ export function serviceSettings(
   const flow = account.deviceStatus()
   const current = profiles.find((profile) => profile.selected)
   // Like the TV app: after signing in to an account with several profiles, ask who's watching.
-  const choosing = status.authenticated && profiles.length > 1 && !account.profileChosen?.()
+  const choosing = canSwitch(status, profiles) && !account.profileChosen?.()
   const accountAction = flow.status === 'waiting' ? 'device' : choosing ? 'profile' : status.authenticated ? 'keep' : 'device'
   return {
     version: 1,

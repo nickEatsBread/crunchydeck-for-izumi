@@ -132,6 +132,8 @@ export class CrunchyrollApp {
   async switchProfile(profileId: string): Promise<AccountStatus> {
     const status = await this.auth.switchProfile(profileId)
     this.profileCache = undefined
+    // The last profile's rows, progress and audio preference must not answer for the new one.
+    this.content.invalidate()
     return status
   }
 

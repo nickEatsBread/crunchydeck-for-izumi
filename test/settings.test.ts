@@ -133,6 +133,20 @@ test('an account with several profiles asks who is watching before it counts as 
   await assert.rejects(saveServiceSettings(account, { accountAction: 'profile', profileId: '' }), /Choose a profile/)
 })
 
+test('a cookie sign-in with several profiles is set up without a profile step it cannot take', async () => {
+  // The cookie grant cannot switch profiles, so asking who is watching left setup stuck.
+  const account = new FakeAccount()
+  await account.loginEtpRt('cookie-secret')
+  account.profileList = [
+    { id: 'p1', name: 'Nico', selected: true },
+    { id: 'p2', name: 'Kids', selected: false },
+  ]
+  const document = serviceSettings(account, account.profileList)
+  assert.equal(document.complete, true)
+  assert.equal(document.values.accountAction, 'keep')
+  assert.equal(document.fields[0]?.options?.some((option) => option.value === 'profile'), false)
+})
+
 test('native settings handle cookie login without echoing the secret', async () => {
   const account = new FakeAccount()
   const saved = await saveServiceSettings(account, { accountAction: 'cookie', etpRt: ' cookie-secret ' })
