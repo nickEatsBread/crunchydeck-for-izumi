@@ -342,6 +342,8 @@
   :scope:not(.gamemode) [data-slot="detail.episodes"] [data-part="episodes.grid"] { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
 }
 [data-part="episode"][data-variant="template"] { overflow: visible; border-radius: 0; background: transparent; outline: none; }
+/* Crunchy Deck rings the artwork alone, never the whole card: no controller ring on the card itself. */
+[data-part="episode"][data-variant="template"]:is(:focus, :focus-visible) { outline: none !important; box-shadow: none !important; }
 [data-part="cd-ep-art"] { overflow: hidden; border-radius: calc(12 * var(--cd)); background: var(--cd-s2); transition: box-shadow 150ms; }
 [data-part="cd-ep-still"] img { transition: transform 150ms, opacity 150ms; }
 [data-part="episode"]:is(:focus-visible, :hover) [data-part="cd-ep-art"] { box-shadow: 0 0 0 2px var(--cd-brand); }
