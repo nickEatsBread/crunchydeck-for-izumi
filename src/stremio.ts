@@ -8,6 +8,10 @@ import { CRUNCHYROLL_ICON } from './brand.js'
 import { curationUrl, pickImage, type CrPanel, type CrSeriesMetadata, type HeroCard } from './cr/content.js'
 import type { EpisodeItem, SeasonItem } from './cr/catalog.js'
 import { DEFAULT_LOCALE } from './cr/constants.js'
+import { anilistGraphQl, politeGraphQl, TrackIdService, type TrackIds } from './cr/anime-ids.js'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { dataDir } from './storage.js'
 
 export const ADDON_ID = 'crunchyroll.izumi.catalog'
 const PREFIX = 'cr:'
@@ -20,7 +24,11 @@ export interface StremioVideo {
   released?: string
   overview?: string
   thumbnail?: string
-  izumi?: { playhead?: number; durationSec?: number; progress?: number; watched?: boolean; premium?: boolean }
+  izumi?: {
+    playhead?: number; durationSec?: number; progress?: number; watched?: boolean; premium?: boolean
+    /** The AniList (and MyAnimeList) entry this episode is, and its number there, for tracking. */
+    track?: TrackIds
+  }
 }
 
 export interface StremioMeta {
@@ -228,7 +236,20 @@ const PAGED: Record<string, { name: string; sort: 'popularity' | 'newly_added'; 
   'cr-simulcast': { name: 'Simulcast season', sort: 'popularity', seasonal: true },
 }
 
+/** How long a meta waits for AniList on a series it has not placed yet. */
+const TRACK_WAIT_MS = 2500
+
+function trackIdService(): TrackIdService {
+  const file = () => join(dataDir(), 'anime-ids.json')
+  return new TrackIdService(
+    politeGraphQl(anilistGraphQl()),
+    () => JSON.parse(readFileSync(file(), 'utf8')),
+    (all) => writeFileSync(file(), JSON.stringify(all), 'utf8'),
+  )
+}
+
 export class StremioCatalog {
+  private trackIds?: TrackIdService
   constructor(private app: CrunchyrollApp) {}
 
   private signedIn(): boolean {
@@ -314,6 +335,16 @@ export class StremioCatalog {
     }
     const playheads = await content.playheads(episodes.map(({ episode }) => episode.guid)).catch(() => new Map())
     for (const { episode, season } of episodes) videos.push(videoOf(episode, season, playheads.get(episode.guid)))
+    // Each episode's AniList and MyAnimeList entry, so izumi can track it (cr/anime-ids.ts).
+    if (object.type === 'series' && preview.name) {
+      this.trackIds ??= trackIdService()
+      const refs = videos.map((video) => ({ key: video.id, season: video.season, number: video.episode, airDate: video.released }))
+      const ids = await this.trackIds.get(contentId, preview.name, refs, TRACK_WAIT_MS).catch(() => undefined)
+      if (ids) for (const video of videos) {
+        const track = ids.get(video.id)
+        if (track) video.izumi = { ...video.izumi, track }
+      }
+    }
     const [upNext, inWatchlist] = await Promise.all([
       content.upNext(contentId).catch(() => undefined),
       content.inWatchlist(contentId).catch(() => undefined),
