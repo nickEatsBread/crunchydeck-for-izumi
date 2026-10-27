@@ -6,6 +6,31 @@ import { crHeaders } from './headers.js'
 import { jsonOrThrow, type CrTransport } from './http.js'
 import type { Auth } from './auth.js'
 
+/** A profile's preferences that Crunchyroll applies across its apps. */
+export interface ProfilePreferences {
+  displayLanguage: string
+  audioLanguage: string
+  subtitleLanguage: string
+  matureContent: boolean
+}
+
+export interface AccountDetails {
+  preferences: ProfilePreferences
+  premium: boolean | null
+}
+
+/** A paid membership from the access token's `benefits` claim (`cr_premium`, a fan pack…); null when
+ *  the token carries no benefits to read. */
+export function premiumFromToken(token: string): boolean | null {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8')) as { benefits?: unknown }
+    const benefits = Array.isArray(payload.benefits) ? payload.benefits.map(String) : []
+    return benefits.length ? benefits.some((benefit) => /premium|fan_pack|mega_fan|super_fan/i.test(benefit)) : null
+  } catch {
+    return null
+  }
+}
+
 /** Image variants: Crunchyroll returns arrays of arrays of sizes. */
 export type CrImages = Record<string, Array<Array<{ source?: string; width?: number; height?: number }>> | undefined>
 
@@ -192,6 +217,41 @@ export class Content {
   /** Forgets cached lists that change with what the user just did (watching, the watchlist). */
   invalidate(): void {
     this.cache.clear()
+  }
+
+  /** The current profile's preferences, as Crunchyroll keeps them for every app. */
+  async profilePreferences(): Promise<ProfilePreferences> {
+    const profile = await this.request<{
+      preferred_communication_language?: string
+      preferred_content_audio_language?: string
+      preferred_content_subtitle_language?: string
+      maturity_rating?: string
+    }>('/accounts/v1/me/profile')
+    return {
+      displayLanguage: profile?.preferred_communication_language ?? '',
+      audioLanguage: profile?.preferred_content_audio_language ?? '',
+      subtitleLanguage: profile?.preferred_content_subtitle_language ?? '',
+      // M3 allows mature titles, M2 hides them.
+      matureContent: profile?.maturity_rating === 'M3',
+    }
+  }
+
+  async setProfilePreferences(patch: Partial<ProfilePreferences>): Promise<void> {
+    const body: Record<string, unknown> = {}
+    if (patch.displayLanguage !== undefined) body.preferred_communication_language = patch.displayLanguage
+    if (patch.audioLanguage !== undefined) body.preferred_content_audio_language = patch.audioLanguage
+    if (patch.subtitleLanguage !== undefined) body.preferred_content_subtitle_language = patch.subtitleLanguage
+    if (patch.matureContent !== undefined) body.maturity_rating = patch.matureContent ? 'M3' : 'M2'
+    if (!Object.keys(body).length) return
+    await this.request('/accounts/v1/me/profile', { method: 'PATCH', body })
+    // Rows and the audio a meta picks follow these preferences.
+    this.invalidate()
+  }
+
+  /** Whether the account has a paid membership: the access token's `benefits` claim lists them.
+   *  null when the token does not say. */
+  async premium(): Promise<boolean | null> {
+    return premiumFromToken(await this.auth.accessToken())
   }
 
   async preferredAudio(): Promise<string> {

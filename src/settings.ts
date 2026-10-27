@@ -1,4 +1,6 @@
 import type { AccountStatus, CrProfile, DeviceCode, DeviceFlowState } from './cr/auth.js'
+import type { AccountDetails, ProfilePreferences } from './cr/content.js'
+import { AUDIO_LANGUAGES, DISPLAY_LANGUAGES, SUBTITLE_LANGUAGES, languageOptions } from './cr/languages.js'
 
 export type ServiceSettingValue = string | number | boolean | null
 
@@ -67,13 +69,21 @@ export interface SettingsAccount {
   /** Optional so plain test accounts need not model profiles. */
   profileChosen?(): boolean
   switchProfile?(profileId: string): Promise<AccountStatus>
+  savePreferences?(patch: Partial<ProfilePreferences>): Promise<void>
 }
 
 /** Only a TV sign-in (TV code, or email and password) can switch profiles: the cookie grant cannot. */
 const canSwitch = (status: AccountStatus, profiles: CrProfile[]) => status.authenticated && status.profile === 'tv' && profiles.length > 1
 
-function accountActions(status: AccountStatus, profiles: CrProfile[]): ServiceSettingOption[] {
+function accountActions(status: AccountStatus, profiles: CrProfile[], details?: AccountDetails): ServiceSettingOption[] {
   return [
+    ...(status.authenticated && details ? [{
+      value: 'preferences',
+      label: 'Languages and content',
+      description: "This profile's display, audio and subtitle languages and mature content, kept by Crunchyroll for all its apps.",
+      submitLabel: 'Save preferences',
+      submittingLabel: 'Saving…',
+    }] : []),
     ...(canSwitch(status, profiles) ? [{
       value: 'profile',
       label: "Choose who's watching",
@@ -126,13 +136,14 @@ function loginLabel(login: AccountStatus['login']): string {
   return 'no saved login'
 }
 
-function description(status: AccountStatus, profile?: CrProfile): string {
+function description(status: AccountStatus, profile?: CrProfile, details?: AccountDetails): string {
   if (!status.authenticated) {
     return 'Not signed in. Choose a sign-in method below; a Crunchyroll account is required.'
   }
   const identity = profile ? ` as ${profile.name}` : status.accountId ? ` as ${status.accountId}` : ''
   const country = status.country ? ` (${status.country})` : ''
-  return `Signed in${identity}${country} using ${loginLabel(status.login)}. Credentials are never shown here.`
+  const membership = details?.premium === true ? ' Membership: Crunchyroll Premium.' : details?.premium === false ? ' Membership: free.' : ''
+  return `Signed in${identity}${country} using ${loginLabel(status.login)}.${membership} Credentials are never shown here.`
 }
 
 function flowNotice(flow: DeviceFlowState): ServiceSettingsNotice | undefined {
@@ -169,7 +180,10 @@ function flowNotice(flow: DeviceFlowState): ServiceSettingsNotice | undefined {
 export function serviceSettings(
   account: Pick<SettingsAccount, 'status' | 'deviceStatus' | 'profileChosen'>,
   profiles: CrProfile[] = [],
+  details?: AccountDetails,
 ): ServiceSettingsDocument {
+  const prefs = details?.preferences
+  const shown = { visibleWhen: { key: 'accountAction', equals: 'preferences' } }
   const status = account.status()
   const flow = account.deviceStatus()
   const current = profiles.find((profile) => profile.selected)
@@ -179,7 +193,7 @@ export function serviceSettings(
   return {
     version: 1,
     title: 'Crunchyroll settings',
-    description: description(status, current),
+    description: description(status, current, details),
     notice: choosing && flow.status !== 'waiting'
       ? {
           tone: 'info',
@@ -196,8 +210,14 @@ export function serviceSettings(
         label: 'Account action',
         type: 'select',
         role: 'action',
-        options: accountActions(status, profiles),
+        options: accountActions(status, profiles, details),
       },
+      ...(prefs ? [
+        { key: 'displayLanguage', label: 'Display language', description: 'Titles, descriptions and row names.', type: 'select' as const, ...shown, options: languageOptions(DISPLAY_LANGUAGES, prefs.displayLanguage) },
+        { key: 'audioLanguage', label: 'Audio language', description: 'The dub an episode starts in when it has one.', type: 'select' as const, ...shown, options: languageOptions(AUDIO_LANGUAGES, prefs.audioLanguage) },
+        { key: 'subtitleLanguage', label: 'Subtitle language', type: 'select' as const, ...shown, options: languageOptions(SUBTITLE_LANGUAGES, prefs.subtitleLanguage, [{ value: '', label: 'None' }]) },
+        { key: 'matureContent', label: 'Mature content', description: 'Show titles rated for adults on this profile.', type: 'boolean' as const, ...shown },
+      ] : []),
       {
         key: 'profileId',
         label: 'Profile',
@@ -238,7 +258,10 @@ export function serviceSettings(
     ],
     // Secrets are deliberately write-only: opening or saving the dialog never echoes a token or
     // password out of the service process and into the WebView.
-    values: { accountAction, profileId: current?.id ?? '', etpRt: '', username: '', password: '' },
+    values: {
+      accountAction, profileId: current?.id ?? '', etpRt: '', username: '', password: '',
+      ...(prefs ? { displayLanguage: prefs.displayLanguage, audioLanguage: prefs.audioLanguage, subtitleLanguage: prefs.subtitleLanguage, matureContent: prefs.matureContent } : {}),
+    },
   }
 }
 
@@ -251,8 +274,8 @@ function value(values: Record<string, unknown>, key: string): string {
   return rawValue(values, key).trim()
 }
 
-function result(account: SettingsAccount, message: string, profiles?: CrProfile[]): ServiceSettingsResult {
-  return { ...serviceSettings(account, profiles), ok: true, message }
+function result(account: SettingsAccount, message: string, profiles?: CrProfile[], details?: AccountDetails): ServiceSettingsResult {
+  return { ...serviceSettings(account, profiles, details), ok: true, message }
 }
 
 export async function saveServiceSettings(
@@ -260,11 +283,26 @@ export async function saveServiceSettings(
   values: Record<string, unknown>,
   /** Reads the account's profiles after a change (the HTTP handler passes the app's cache). */
   profiles: () => Promise<CrProfile[] | undefined> = async () => undefined,
+  /** Reads the membership and preferences after a change. */
+  details: () => Promise<AccountDetails | undefined> = async () => undefined,
 ): Promise<ServiceSettingsResult> {
-  const after = async (message: string) => result(account, message, await profiles().catch(() => undefined))
+  const after = async (message: string) => {
+    const [list, read] = await Promise.all([profiles().catch(() => undefined), details().catch(() => undefined)])
+    return result(account, message, list, read)
+  }
   switch (value(values, 'accountAction') || 'keep') {
     case 'keep':
       return after('No account changes were made.')
+    case 'preferences': {
+      if (!account.savePreferences) throw new Error('This account cannot change its preferences.')
+      const patch: Partial<ProfilePreferences> = {}
+      for (const key of ['displayLanguage', 'audioLanguage', 'subtitleLanguage'] as const) {
+        if (typeof values[key] === 'string') patch[key] = value(values, key)
+      }
+      if (typeof values.matureContent === 'boolean') patch.matureContent = values.matureContent
+      await account.savePreferences(patch)
+      return after('Preferences saved to Crunchyroll.')
+    }
     case 'profile': {
       const profileId = value(values, 'profileId')
       if (!profileId) throw new Error('Choose a profile.')

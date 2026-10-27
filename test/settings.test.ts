@@ -63,6 +63,8 @@ class FakeAccount implements SettingsAccount {
     this.flow = { status: 'idle' }
     this.current = { ...this.current, authenticated: false, login: 'none', accountId: undefined }
   }
+  savePreferences?: (patch: Record<string, unknown>) => Promise<void>
+  async accountDetails(): Promise<undefined> { return undefined }
   profileList: CrProfile[] = []
   chosen = false
   switchedTo = ''
@@ -145,6 +147,35 @@ test('a cookie sign-in with several profiles is set up without a profile step it
   assert.equal(document.complete, true)
   assert.equal(document.values.accountAction, 'keep')
   assert.equal(document.fields[0]?.options?.some((option) => option.value === 'profile'), false)
+})
+
+test('a signed-in account shows its membership and edits the profile languages and mature content', async () => {
+  const account = new FakeAccount()
+  await account.loginPassword('me@example.com', 'secret')
+  const details = { premium: true, preferences: { displayLanguage: 'en-US', audioLanguage: 'ja-JP', subtitleLanguage: 'en-US', matureContent: false } }
+  const document = serviceSettings(account, [], details)
+  assert.match(document.description, /Crunchyroll Premium/)
+  assert.ok(document.fields[0]?.options?.some((option) => option.value === 'preferences'))
+  assert.equal(document.values.audioLanguage, 'ja-JP')
+  assert.equal(document.values.matureContent, false)
+  const subtitles = document.fields.find((field) => field.key === 'subtitleLanguage')
+  assert.equal(subtitles?.options?.[0]?.label, 'None')
+  assert.deepEqual(subtitles?.visibleWhen, { key: 'accountAction', equals: 'preferences' })
+
+  let saved: unknown
+  account.savePreferences = async (patch) => { saved = patch }
+  const after = await saveServiceSettings(account, { accountAction: 'preferences', displayLanguage: 'fr-FR', audioLanguage: 'ja-JP', subtitleLanguage: '', matureContent: true }, undefined, async () => details)
+  assert.deepEqual(saved, { displayLanguage: 'fr-FR', audioLanguage: 'ja-JP', subtitleLanguage: '', matureContent: true })
+  assert.equal(after.message, 'Preferences saved to Crunchyroll.')
+})
+
+test('membership comes from the access token benefits', async () => {
+  const { premiumFromToken } = await import('../src/cr/content.js')
+  const token = (claims: object) => `x.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.y`
+  assert.equal(premiumFromToken(token({ benefits: ['cr_premium', 'cr_store'] })), true)
+  assert.equal(premiumFromToken(token({ benefits: ['cr_store'] })), false)
+  assert.equal(premiumFromToken(token({})), null)
+  assert.equal(premiumFromToken('not-a-token'), null)
 })
 
 test('native settings handle cookie login without echoing the secret', async () => {

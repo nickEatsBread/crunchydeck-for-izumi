@@ -410,7 +410,11 @@ async function handle(
       return
     }
     if (req.method === 'GET' && url.pathname === '/__izumi/settings') {
-      send(res, 200, serviceSettings(app, await app.accountProfiles().catch(() => undefined)))
+      const [profiles, details] = await Promise.all([
+        app.accountProfiles().catch(() => undefined),
+        app.accountDetails().catch(() => undefined),
+      ])
+      send(res, 200, serviceSettings(app, profiles, details))
       return
     }
     if (req.method === 'POST' && url.pathname === '/__izumi/settings') {
@@ -419,7 +423,7 @@ async function handle(
       if (!values || typeof values !== 'object' || Array.isArray(values)) {
         throw new Error('Crunchyroll settings values must be an object.')
       }
-      send(res, 200, await saveServiceSettings(app, values as Record<string, unknown>, () => app.accountProfiles()))
+      send(res, 200, await saveServiceSettings(app, values as Record<string, unknown>, () => app.accountProfiles(), () => app.accountDetails()))
       return
     }
     if (req.method === 'POST' && url.pathname === '/api/login/etp') {

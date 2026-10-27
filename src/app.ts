@@ -1,6 +1,6 @@
 import { Auth, type AccountStatus, type CrProfile, type DeviceCode, type DeviceFlowState } from './cr/auth.js'
 import { Catalog, type EpisodeHit, type SearchHit } from './cr/catalog.js'
-import { Content } from './cr/content.js'
+import { Content, type AccountDetails, type ProfilePreferences } from './cr/content.js'
 import { tryChromeTransport } from './cr/chrome.js'
 import { FetchTransport, type CrTransport } from './cr/http.js'
 import { PlayService, type PlaySession } from './cr/play.js'
@@ -123,6 +123,18 @@ export class CrunchyrollApp {
     // One profile: nothing to choose.
     if (profiles.length <= 1) this.auth.markProfileChosen()
     return profiles
+  }
+
+  /** The membership and the current profile's preferences for the settings page; undefined when
+   *  signed out or when Crunchyroll does not answer. */
+  async accountDetails(): Promise<AccountDetails | undefined> {
+    if (!this.auth.status().authenticated) return undefined
+    const [preferences, premium] = await Promise.all([this.content.profilePreferences(), this.content.premium()])
+    return { preferences, premium }
+  }
+
+  savePreferences(patch: Partial<ProfilePreferences>): Promise<void> {
+    return this.content.setProfilePreferences(patch)
   }
 
   profileChosen(): boolean {
