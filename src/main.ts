@@ -2,6 +2,16 @@ import { CrunchyrollApp } from './app.js'
 import { DEFAULT_PORT } from './cr/constants.js'
 import { listen } from './server.js'
 
+/** Whether process `pid` still exists: signal 0 checks without signalling. EPERM means it exists. */
+export function parentAlive(pid: number, kill: (pid: number, signal: 0) => void = process.kill): boolean {
+  try {
+    kill(pid, 0)
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
 export async function start(): Promise<void> {
 const managed = !!process.env.IZUMI_EXTENSION_PORT
 const port = Number(process.env.IZUMI_EXTENSION_PORT ?? process.env.CR_SOURCE_PORT) || DEFAULT_PORT
@@ -24,6 +34,10 @@ const shutdown = async () => {
 server = await listen(app, port, managed ? () => void shutdown() : undefined)
 process.on('SIGINT', () => void shutdown())
 process.on('SIGTERM', () => void shutdown())
+// Started by izumi: go when izumi does, even if it could not ask (killed, crashed). A service left
+// running kept Steam showing the game as running after izumi had quit.
+const parent = Number(process.env.IZUMI_PARENT_PID)
+if (managed && parent > 0) setInterval(() => { if (!parentAlive(parent)) void shutdown() }, 2000).unref()
 process.on('uncaughtException', (error) => {
   console.error('[cr] uncaught', error)
 })
