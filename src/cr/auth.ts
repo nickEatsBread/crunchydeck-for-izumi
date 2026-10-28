@@ -65,10 +65,10 @@ interface MultiprofileItem {
 }
 
 // Profile art lives at fixed paths on the static host, at the sizes the TV app asks for. The asset
-// ids are file names, so they are encoded to keep them inside their folder.
-const DEFAULT_AVATAR = '0001-cr-white-orange.png'
-export const profileAvatarUrl = (asset?: string): string =>
-  `${HOSTS.static}/assets/avatar/170x170/${encodeURIComponent(asset || DEFAULT_AVATAR)}`
+// ids are file names, so they are encoded to keep them inside their folder. A profile without an
+// avatar shows none: the default Crunchy Deck falls back to answers 403.
+export const profileAvatarUrl = (asset?: string): string | undefined =>
+  asset ? `${HOSTS.static}/assets/avatar/170x170/${encodeURIComponent(asset)}` : undefined
 export const profileWallpaperUrl = (asset?: string): string | undefined =>
   asset ? `${HOSTS.static}/assets/wallpaper/1920x400/${encodeURIComponent(asset)}` : undefined
 

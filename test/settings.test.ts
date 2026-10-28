@@ -145,7 +145,7 @@ test('profiles keep their avatar and wallpaper as image URLs', () => {
   ], 'p1')
   assert.deepEqual(profiles, [
     { id: 'p1', name: 'Nico', selected: true, avatar: `${art}/avatar/170x170/0007-cr-hime.png`, wallpaper: `${art}/wallpaper/1920x400/0010-crunchyroll.png` },
-    { id: 'p2', name: 'kid', selected: false, avatar: `${art}/avatar/170x170/0001-cr-white-orange.png`, wallpaper: undefined },
+    { id: 'p2', name: 'kid', selected: false, avatar: undefined, wallpaper: undefined },
     { id: 'p3', name: 'Profile', selected: false, avatar: `${art}/avatar/170x170/..%2F..%2Fevil%2Fx.png`, wallpaper: undefined },
   ])
   // Without a session profile the server's own mark decides.
