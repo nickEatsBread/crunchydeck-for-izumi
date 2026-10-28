@@ -418,11 +418,11 @@
 [data-slot="search"] [data-part="search.field"]:is(:focus, :focus-visible), :scope:not(.gamemode) [data-slot="search"] [data-part="search.field"]:hover { box-shadow: 0 0 0 2px var(--cd-brand); }
 /* Crunchy Deck's poster grid: three across on the Deck, five and six on wide windows, each poster
    filling its column (the fixed row-card width overlapped the narrower columns). */
-[data-slot="search"] [data-part="search.grid"] { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: calc(28 * var(--cd)) calc(20 * var(--cd)) !important; }
-@media (min-width: 1280px) { :scope:not(.gamemode) [data-slot="search"] [data-part="search.grid"] { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; } }
-@media (min-width: 1536px) { :scope:not(.gamemode) [data-slot="search"] [data-part="search.grid"] { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; } }
-[data-slot="search"] [data-part="search.grid"] [data-part="card"] { width: 100% !important; }
-[data-slot="search"] [data-part="search.grid"] [data-part="card"] [data-part="card.art"] { height: auto; aspect-ratio: 195 / 290 !important; }
+:is([data-slot="search"] [data-part="search.grid"], [data-slot="browse"] [data-part="browse.grid"]) { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: calc(28 * var(--cd)) calc(20 * var(--cd)) !important; }
+@media (min-width: 1280px) { :scope:not(.gamemode) :is([data-slot="search"] [data-part="search.grid"], [data-slot="browse"] [data-part="browse.grid"]) { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; } }
+@media (min-width: 1536px) { :scope:not(.gamemode) :is([data-slot="search"] [data-part="search.grid"], [data-slot="browse"] [data-part="browse.grid"]) { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; } }
+:is([data-slot="search"] [data-part="search.grid"], [data-slot="browse"] [data-part="browse.grid"]) [data-part="card"] { width: 100% !important; }
+:is([data-slot="search"] [data-part="search.grid"], [data-slot="browse"] [data-part="browse.grid"]) [data-part="card"] [data-part="card.art"] { height: auto; aspect-ratio: 195 / 290 !important; }
 [data-part="search.empty"] { padding: 0; border-radius: 0; background: transparent; color: rgb(255 255 255 / 0.4); font-size: calc(14 * var(--cd)); text-align: left; }
 [data-part="search.empty"][data-state="none"] { color: rgb(255 255 255 / 0.5); }
 
