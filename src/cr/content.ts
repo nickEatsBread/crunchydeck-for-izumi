@@ -105,11 +105,11 @@ const ROW_TYPES = new Set([
   'recommendations', 'history', 'watchlist', 'recent_episodes', 'browse', 'series', 'music_video', 'because_you_watched',
 ])
 
-const CURATION = 'https://imgsrv.crunchyroll.com/cdn-cgi/image/format=auto'
+const CURATION = 'https://imgsrv.crunchyroll.com/cdn-cgi/image'
 
 /** A curated (HeroMediaCard) image path at a given width. */
-export function curationUrl(path: string | undefined, width: number): string | undefined {
-  return path ? `${CURATION},width=${width}${path.startsWith('/') ? '' : '/'}${path}` : undefined
+export function curationUrl(path: string | undefined, width: number, format: 'auto' | 'jpeg' = 'auto'): string | undefined {
+  return path ? `${CURATION}/format=${format},width=${width}${path.startsWith('/') ? '' : '/'}${path}` : undefined
 }
 
 /** The smallest variant at least `width` wide (or the largest there is). */

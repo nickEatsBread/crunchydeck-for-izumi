@@ -31,7 +31,7 @@ test('hero cards are collected from the server-driven tree once each', () => {
   const meta = heroMeta(cards[0]!)
   assert.equal(meta.id, 'cr:G1')
   assert.equal(meta.logo, 'https://imgsrv.crunchyroll.com/cdn-cgi/image/format=auto,width=600/logo.png')
-  assert.equal(meta.background, 'https://imgsrv.crunchyroll.com/cdn-cgi/image/format=auto,width=1920/wide.jpg')
+  assert.equal(meta.background, 'https://imgsrv.crunchyroll.com/cdn-cgi/image/format=jpeg,width=1920/wide.jpg')
 })
 
 test('a featured title carries its rating, Sub | Dub and genres', () => {

@@ -145,8 +145,10 @@ export function heroMeta(card: HeroCard): StremioMeta {
     id: PREFIX + card.contentId,
     type: 'series',
     name: card.title,
-    background: curationUrl(card.wideImage, 1920) ?? curationUrl(card.tallImage, 1200),
-    poster: curationUrl(card.tallImage, 480),
+    // Opaque art as JPEG: the automatic format serves these as PNG, whose decode froze the Deck's
+    // banner for ~70 ms a slide (JPEG: ~33 ms, no dropped frame). The logo needs its transparency.
+    background: curationUrl(card.wideImage, 1920, 'jpeg') ?? curationUrl(card.tallImage, 1200, 'jpeg'),
+    poster: curationUrl(card.tallImage, 480, 'jpeg'),
     logo: curationUrl(card.logoImage, 600),
     description: card.description,
   }
