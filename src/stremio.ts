@@ -5,7 +5,7 @@
 // progress.
 import type { CrunchyrollApp } from './app.js'
 import { CRUNCHYROLL_ICON } from './brand.js'
-import { curationUrl, pickImage, type CrPanel, type CrSeriesMetadata, type HeroCard } from './cr/content.js'
+import { curationUrl, pickImage, type CrCategory, type CrPanel, type CrSeriesMetadata, type HeroCard } from './cr/content.js'
 import type { EpisodeItem, SeasonItem } from './cr/catalog.js'
 import { DEFAULT_LOCALE } from './cr/constants.js'
 import { anilistGraphQl, politeGraphQl, TrackIdService, type TrackIds } from './cr/anime-ids.js'
@@ -62,7 +62,7 @@ export interface CatalogEntry {
   id: string
   name: string
   extra?: Array<{ name: string; isRequired?: boolean; options?: string[] }>
-  izumi?: { hero?: true; continue?: true }
+  izumi?: { hero?: true; continue?: true; home?: boolean; homeFilters?: boolean }
 }
 
 /** "TV-14" → "14+", "16" → "16+"; the locale-correct extended rating wins (as Crunchy Deck shows it). */
@@ -224,18 +224,47 @@ export function stripPrefix(id: string): string | undefined {
   return id.startsWith(PREFIX) && id.length > PREFIX.length ? id.slice(PREFIX.length) : undefined
 }
 
-/** `skip=24&search=one%20piece` → {skip: 24, search: "one piece"}. */
-export function parseExtra(extra: string | undefined): { skip: number; search?: string } {
+/** `skip=24&search=one%20piece&genre=Action` → {skip: 24, search: "one piece", genre: "Action"}. */
+export function parseExtra(extra: string | undefined): { skip: number; search?: string; genre?: string } {
   const params = new URLSearchParams(extra ?? '')
   const skip = Number(params.get('skip') ?? 0)
   const search = params.get('search') ?? undefined
-  return { skip: Number.isFinite(skip) && skip > 0 ? Math.floor(skip) : 0, ...(search ? { search } : {}) }
+  const genre = params.get('genre') ?? undefined
+  return { skip: Number.isFinite(skip) && skip > 0 ? Math.floor(skip) : 0, ...(search ? { search } : {}), ...(genre ? { genre } : {}) }
 }
 
-const PAGED: Record<string, { name: string; sort: 'popularity' | 'newly_added'; seasonal?: boolean }> = {
+/** Crunchyroll's categories as its Categories screen lists them, for the manifest while (or when)
+ *  the live list cannot be read. */
+export const FALLBACK_CATEGORIES: CrCategory[] = [
+  { id: 'action', title: 'Action' },
+  { id: 'adventure', title: 'Adventure' },
+  { id: 'comedy', title: 'Comedy' },
+  { id: 'drama', title: 'Drama' },
+  { id: 'fantasy', title: 'Fantasy' },
+  { id: 'music', title: 'Music' },
+  { id: 'romance', title: 'Romance' },
+  { id: 'sci-fi', title: 'Sci-Fi' },
+  { id: 'seinen', title: 'Seinen' },
+  { id: 'shojo', title: 'Shojo' },
+  { id: 'shonen', title: 'Shonen' },
+  { id: 'slice-of-life', title: 'Slice of life' },
+  { id: 'sports', title: 'Sports' },
+  { id: 'supernatural', title: 'Supernatural' },
+  { id: 'thriller', title: 'Thriller' },
+]
+
+/** The `categories=` id of the category title a client sent back as `genre`. */
+export function categoryId(title: string, categories: CrCategory[]): string {
+  const key = title.trim().toLowerCase()
+  return [...categories, ...FALLBACK_CATEGORIES].find((category) => category.title.toLowerCase() === key)?.id ?? key.replace(/\s+/g, '-')
+}
+
+/** The listings that page (`skip`) and narrow to a category (`genre`): izumi's Browse sorts. */
+const PAGED: Record<string, { name: string; sort: 'popularity' | 'newly_added' | 'alphabetical'; seasonal?: boolean }> = {
   'cr-popular': { name: 'Popular', sort: 'popularity' },
   'cr-newest': { name: 'New', sort: 'newly_added' },
   'cr-simulcast': { name: 'Simulcast season', sort: 'popularity', seasonal: true },
+  'cr-alphabetical': { name: 'A–Z', sort: 'alphabetical' },
 }
 
 /** How long a meta waits for AniList on a series it has not placed yet: not at all. The lookup runs
@@ -253,14 +282,28 @@ function trackIdService(): TrackIdService {
 
 export class StremioCatalog {
   private trackIds?: TrackIdService
+  private categories?: CrCategory[]
+  private categoriesJob?: Promise<void>
   constructor(private app: CrunchyrollApp) {}
 
   private signedIn(): boolean {
     return this.app.auth.status().authenticated
   }
 
+  /** Reads the category list once a run, beside the home feed; the manifest never waits for it.
+   *  A failed or empty read is tried again with the next manifest. */
+  private loadCategories(): void {
+    this.categoriesJob ??= this.app.content.categories().then(
+      (list) => { if (list.length) this.categories = list; else this.categoriesJob = undefined },
+      () => { this.categoriesJob = undefined },
+    )
+  }
+
   async manifest(): Promise<Record<string, unknown>> {
-    const feed = this.signedIn() ? await this.app.content.homeRows().catch(() => []) : []
+    const signedIn = this.signedIn()
+    if (signedIn) this.loadCategories()
+    const feed = signedIn ? await this.app.content.homeRows().catch(() => []) : []
+    const genre = { name: 'genre', options: (this.categories ?? FALLBACK_CATEGORIES).map((category) => category.title) }
     const catalogs: CatalogEntry[] = [
       { type: 'series', id: 'cr-hero', name: 'Featured', izumi: { hero: true } },
       ...feed.map((row) => ({
@@ -269,7 +312,8 @@ export class StremioCatalog {
         name: row.title,
         ...(row.kind === 'history' ? { izumi: { continue: true as const } } : {}),
       })),
-      ...Object.entries(PAGED).map(([id, row]) => ({ type: 'series' as const, id, name: row.name, extra: [{ name: 'skip' }] })),
+      // The categories are for Browse: izumi offers no Home row per category, and A–Z stays off Home.
+      ...Object.entries(PAGED).map(([id, row]) => ({ type: 'series' as const, id, name: row.name, extra: [{ name: 'skip' }, genre], izumi: { homeFilters: false, ...(id === 'cr-alphabetical' ? { home: false } : {}) } })),
       { type: 'series', id: 'cr-search', name: 'Search', extra: [{ name: 'search', isRequired: true }] },
     ]
     return {
@@ -288,7 +332,7 @@ export class StremioCatalog {
 
   async catalog(id: string, extra: string | undefined): Promise<StremioMeta[]> {
     if (!this.signedIn()) return []
-    const { skip, search } = parseExtra(extra)
+    const { skip, search, genre } = parseExtra(extra)
     const content = this.app.content
     if (id === 'cr-hero') {
       const cards = await content.hero()
@@ -300,7 +344,10 @@ export class StremioCatalog {
     }
     if (id === 'cr-search') return search ? collect(await content.search(search)) : []
     const paged = PAGED[id]
-    if (paged) return collect(await content.browse({ sort: paged.sort, seasonal: paged.seasonal, start: skip, n: 24 }))
+    if (paged) {
+      const categories = genre ? categoryId(genre, this.categories ?? []) : undefined
+      return collect(await content.browse({ sort: paged.sort, seasonal: paged.seasonal, start: skip, n: 24, categories }))
+    }
     const row = (await content.homeRows()).find((item) => item.id === id)
     return row ? collect(await content.rowItems(row)) : []
   }

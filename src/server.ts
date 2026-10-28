@@ -197,8 +197,8 @@ async function handleStremio(app: CrunchyrollApp, req: IncomingMessage, res: Ser
   }
   const listing = path.match(/^catalog\/(series|movie)\/([^/]+?)(?:\/([^/]+))?\.json$/)
   if (req.method === 'GET' && listing) {
-    const extra = listing[3] ? decodeURIComponent(listing[3]) : undefined
-    send(res, 200, { metas: await catalog.catalog(decodeURIComponent(listing[2] ?? ''), extra) })
+    // parseExtra decodes each value: decoding the whole segment first split a value holding "&".
+    send(res, 200, { metas: await catalog.catalog(decodeURIComponent(listing[2] ?? ''), listing[3]) })
     return
   }
   const meta = path.match(/^meta\/(series|movie)\/([^/]+)\.json$/)

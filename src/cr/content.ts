@@ -95,6 +95,11 @@ export interface HeroCard {
   logoImage?: string
 }
 
+export interface CrCategory {
+  id: string
+  title: string
+}
+
 export interface Playhead {
   playhead: number
   fullyWatched: boolean
@@ -305,6 +310,18 @@ export class Content {
     }
     const json = await this.request<{ data?: unknown[] }>(`/content/v2/discover/browse?${params}`, { ttlMs: 10 * 60_000 })
     return panels(json?.data)
+  }
+
+  /** The genres Browse narrows to, as Crunchy Deck's Categories screen reads them: the id goes to
+   *  `browse?categories=`, the title is what the viewer sees. */
+  async categories(): Promise<CrCategory[]> {
+    const json = await this.request<{ data?: Array<{ id?: unknown; title?: unknown; localization?: { title?: unknown } }> }>(
+      `/content/v2/discover/categories?locale=${DEFAULT_LOCALE}`,
+    )
+    return (json?.data ?? []).flatMap((row) => {
+      const title = row?.localization?.title ?? row?.title ?? row?.id
+      return typeof row?.id === 'string' && row.id && typeof title === 'string' ? [{ id: row.id, title }] : []
+    })
   }
 
   async currentSeason(): Promise<string | undefined> {

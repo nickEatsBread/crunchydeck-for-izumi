@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { feedRows, heroCards, panels, pickImage } from '../src/cr/content.js'
-import { audioLabel, episodeLabel, heroMeta, metaPreview, parseExtra, pickSeasons, ratingOf, stripPrefix, videoOf, withFacts, withResume } from '../src/stremio.js'
+import { Content, feedRows, heroCards, panels, pickImage } from '../src/cr/content.js'
+import type { CrRequest, CrTransport } from '../src/cr/http.js'
+import { audioLabel, categoryId, episodeLabel, FALLBACK_CATEGORIES, heroMeta, metaPreview, parseExtra, pickSeasons, ratingOf, StremioCatalog, stripPrefix, videoOf, withFacts, withResume } from '../src/stremio.js'
 
 const images = (kind: string) => ({ [kind]: [[{ source: `https://img/${kind}/320`, width: 320 }, { source: `https://img/${kind}/640`, width: 640 }, { source: `https://img/${kind}/1920`, width: 1920 }]] })
 
@@ -120,4 +121,97 @@ test('extras and ids parse safely', () => {
   assert.equal(stripPrefix('cr:G1'), 'G1')
   assert.equal(stripPrefix('tt123'), undefined)
   assert.equal(stripPrefix('cr:'), undefined)
+})
+
+test('a genre extra is decoded once, so a category title may hold "&"', () => {
+  assert.deepEqual(parseExtra('genre=Slice%20of%20life&skip=48'), { skip: 48, genre: 'Slice of life' })
+  assert.deepEqual(parseExtra('genre=Music%20%26%20Idols'), { skip: 0, genre: 'Music & Idols' })
+})
+
+test('a category title maps to its browse id: the live list, then the built-in one, then its slug', () => {
+  const live = [{ id: 'isekai-id', title: 'Isekai' }]
+  assert.equal(categoryId('isekai', live), 'isekai-id')
+  assert.equal(categoryId('Slice of life', live), 'slice-of-life')
+  assert.equal(categoryId('Sci-Fi', []), 'sci-fi')
+  assert.equal(categoryId('Post Apocalyptic', []), 'post-apocalyptic')
+})
+
+/** A signed-in service over a fake Crunchyroll: answers by path, records every URL asked for. */
+function fakeService(answer: (url: URL) => unknown) {
+  const urls: URL[] = []
+  const transport: CrTransport = {
+    name: 'fake',
+    async request(req: CrRequest) {
+      const url = new URL(req.url)
+      urls.push(url)
+      const text = JSON.stringify(answer(url) ?? {})
+      return { status: 200, url: req.url, headers: {}, body: Buffer.from(text), get text() { return text } }
+    },
+  }
+  const auth = { profile: 'tv', accessToken: async () => 'token', status: () => ({ authenticated: true, accountId: 'acct' }) }
+  const content = new Content(transport, auth as never)
+  return { urls, content, catalog: new StremioCatalog({ auth, content } as never) }
+}
+
+test('the paged listings carry skip and a genre extra; the rest stay as they were', async () => {
+  let release!: (value: unknown) => void
+  const pending = new Promise((resolve) => { release = resolve })
+  const { content, catalog } = fakeService(() => ({}))
+  content.homeRows = async () => [{ id: 'cr-history', title: 'Continue Watching', kind: 'history', link: '/x' }]
+  content.categories = () => pending as never
+
+  // The first manifest does not wait for the category list: it lists the built-in one.
+  const first = (await catalog.manifest()).catalogs as Array<{ id: string; extra?: Array<{ name: string; isRequired?: boolean; options?: string[] }> }>
+  const paged = first.filter((entry) => entry.extra?.some((item) => item.name === 'skip'))
+  assert.deepEqual(paged.map((entry) => entry.id), ['cr-popular', 'cr-newest', 'cr-simulcast', 'cr-alphabetical'])
+  for (const entry of paged) {
+    assert.ok(!entry.extra!.some((item) => item.isRequired))
+    assert.deepEqual(entry.extra!.find((item) => item.name === 'genre')?.options, FALLBACK_CATEGORIES.map((category) => category.title))
+  }
+  assert.equal(first.find((entry) => entry.id === 'cr-hero')?.extra, undefined)
+  assert.equal(first.find((entry) => entry.id === 'cr-history')?.extra, undefined)
+  assert.deepEqual(first.find((entry) => entry.id === 'cr-search')?.extra, [{ name: 'search', isRequired: true }])
+
+  // Once read, the live list is what later manifests offer.
+  release([{ id: 'action', title: 'Action' }, { id: 'isekai-id', title: 'Isekai' }])
+  await new Promise((resolve) => setImmediate(resolve))
+  const later = (await catalog.manifest()).catalogs as Array<{ id: string; extra?: Array<{ name: string; options?: string[] }> }>
+  assert.deepEqual(later.find((entry) => entry.id === 'cr-newest')?.extra?.find((item) => item.name === 'genre')?.options, ['Action', 'Isekai'])
+})
+
+test('a failed category read leaves the built-in list and is tried again', async () => {
+  const { content, catalog } = fakeService(() => ({}))
+  let reads = 0
+  content.homeRows = async () => []
+  content.categories = async () => { reads++; throw new Error('offline') }
+  const options = async () => ((await catalog.manifest()).catalogs as Array<{ id: string; extra?: Array<{ name: string; options?: string[] }> }>)
+    .find((entry) => entry.id === 'cr-popular')?.extra?.find((item) => item.name === 'genre')?.options
+  assert.equal((await options())?.length, FALLBACK_CATEGORIES.length)
+  await new Promise((resolve) => setImmediate(resolve))
+  await options()
+  assert.equal(reads, 2)
+})
+
+test('a listing narrowed to a category asks Crunchyroll browse for it, keeping the sort and paging', async () => {
+  const { urls, catalog } = fakeService((url) => (url.pathname.endsWith('/discover/categories')
+    ? { data: [{ id: 'isekai-id', localization: { title: 'Isekai' } }] }
+    : url.pathname.endsWith('/seasonal_tags') ? { data: [{ id: 'fall-2026' }] }
+    : { data: [{ id: 'G1', type: 'series', title: 'One' }] }))
+  const browse = () => urls.filter((url) => url.pathname.endsWith('/discover/browse')).at(-1)!.searchParams
+
+  const metas = await catalog.catalog('cr-popular', 'genre=Slice%20of%20life&skip=24')
+  assert.deepEqual(metas.map((meta) => meta.id), ['cr:G1'])
+  assert.deepEqual([browse().get('categories'), browse().get('sort_by'), browse().get('start')], ['slice-of-life', 'popularity', '24'])
+
+  await catalog.catalog('cr-alphabetical', 'skip=48')
+  assert.deepEqual([browse().get('categories'), browse().get('sort_by'), browse().get('start')], [null, 'alphabetical', '48'])
+
+  await catalog.catalog('cr-simulcast', 'genre=Action')
+  assert.deepEqual([browse().get('categories'), browse().get('seasonal_tag')], ['action', 'fall-2026'])
+
+  // A category only the live list knows maps to its id once the manifest has read the list.
+  await catalog.manifest()
+  await new Promise((resolve) => setImmediate(resolve))
+  await catalog.catalog('cr-newest', 'genre=Isekai')
+  assert.deepEqual([browse().get('categories'), browse().get('sort_by')], ['isekai-id', 'newly_added'])
 })
