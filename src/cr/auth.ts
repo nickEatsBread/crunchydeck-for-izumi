@@ -49,6 +49,41 @@ export interface CrProfile {
   id: string
   name: string
   selected: boolean
+  /** Square avatar art (may be transparent). */
+  avatar?: string
+  /** Wide, opaque wallpaper art, when the profile has one. */
+  wallpaper?: string
+}
+
+interface MultiprofileItem {
+  profile_id?: string
+  profile_name?: string
+  username?: string
+  avatar?: string
+  wallpaper?: string
+  is_selected?: boolean
+}
+
+// Profile art lives at fixed paths on the static host, at the sizes the TV app asks for. The asset
+// ids are file names, so they are encoded to keep them inside their folder.
+const DEFAULT_AVATAR = '0001-cr-white-orange.png'
+export const profileAvatarUrl = (asset?: string): string =>
+  `${HOSTS.static}/assets/avatar/170x170/${encodeURIComponent(asset || DEFAULT_AVATAR)}`
+export const profileWallpaperUrl = (asset?: string): string | undefined =>
+  asset ? `${HOSTS.static}/assets/wallpaper/1920x400/${encodeURIComponent(asset)}` : undefined
+
+/** Maps `/accounts/v1/me/multiprofile` entries; `current` (the session's profile) wins over the
+ *  server's own selection mark. */
+export function mapProfiles(items: MultiprofileItem[], current?: string): CrProfile[] {
+  return items
+    .filter((item) => item.profile_id)
+    .map((item) => ({
+      id: item.profile_id!,
+      name: item.profile_name || item.username || 'Profile',
+      selected: current ? item.profile_id === current : !!item.is_selected,
+      avatar: profileAvatarUrl(item.avatar),
+      wallpaper: profileWallpaperUrl(item.wallpaper),
+    }))
 }
 
 export interface DeviceCode {
@@ -175,15 +210,8 @@ export class Auth {
       url: `${tokenHost(profile)}/accounts/v1/me/multiprofile`,
       headers: crHeaders({ profile, authorization: `Bearer ${token}` }),
     })
-    const json = await jsonOrThrow<{ profiles?: Array<{ profile_id?: string; profile_name?: string; username?: string; is_selected?: boolean }> }>(res)
-    const current = this.session.profileId ?? this.tokens?.profileId
-    return (json.profiles ?? [])
-      .filter((item) => item.profile_id)
-      .map((item) => ({
-        id: item.profile_id!,
-        name: item.profile_name || item.username || 'Profile',
-        selected: current ? item.profile_id === current : !!item.is_selected,
-      }))
+    const json = await jsonOrThrow<{ profiles?: MultiprofileItem[] }>(res)
+    return mapProfiles(json.profiles ?? [], this.session.profileId ?? this.tokens?.profileId)
   }
 
   /** Re-mints the session for another profile of the same account. TV sign-ins only: the web

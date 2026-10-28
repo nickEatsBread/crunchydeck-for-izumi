@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import type { CrunchyrollApp } from '../src/app.js'
-import type { AccountStatus, CrProfile, DeviceCode, DeviceFlowState } from '../src/cr/auth.js'
+import { mapProfiles, type AccountStatus, type CrProfile, type DeviceCode, type DeviceFlowState } from '../src/cr/auth.js'
 import { CRUNCHYROLL_ICON } from '../src/brand.js'
 import { listen } from '../src/server.js'
 import {
@@ -133,6 +133,43 @@ test('an account with several profiles asks who is watching before it counts as 
   assert.equal(saved.values.accountAction, 'keep')
   assert.match(saved.description, /as Kids/)
   await assert.rejects(saveServiceSettings(account, { accountAction: 'profile', profileId: '' }), /Choose a profile/)
+})
+
+test('profiles keep their avatar and wallpaper as image URLs', () => {
+  const art = 'https://static.crunchyroll.com/assets'
+  const profiles = mapProfiles([
+    { profile_id: 'p1', profile_name: 'Nico', avatar: '0007-cr-hime.png', wallpaper: '0010-crunchyroll.png', is_selected: false },
+    { profile_id: 'p2', username: 'kid', is_selected: true },
+    { profile_name: 'No id' },
+    { profile_id: 'p3', avatar: '../../evil/x.png' },
+  ], 'p1')
+  assert.deepEqual(profiles, [
+    { id: 'p1', name: 'Nico', selected: true, avatar: `${art}/avatar/170x170/0007-cr-hime.png`, wallpaper: `${art}/wallpaper/1920x400/0010-crunchyroll.png` },
+    { id: 'p2', name: 'kid', selected: false, avatar: `${art}/avatar/170x170/0001-cr-white-orange.png`, wallpaper: undefined },
+    { id: 'p3', name: 'Profile', selected: false, avatar: `${art}/avatar/170x170/..%2F..%2Fevil%2Fx.png`, wallpaper: undefined },
+  ])
+  // Without a session profile the server's own mark decides.
+  assert.deepEqual(mapProfiles([{ profile_id: 'p1' }, { profile_id: 'p2', is_selected: true }]).map((profile) => profile.selected), [false, true])
+})
+
+test("who's watching shows each profile's avatar and wallpaper, and the summary shows the current one", async () => {
+  const account = new FakeAccount()
+  await account.loginPassword('me@example.com', 'secret')
+  account.profileList = [
+    { id: 'p1', name: 'Nico', selected: true, avatar: 'https://img.test/nico.png', wallpaper: 'https://img.test/nico-wall.png' },
+    { id: 'p2', name: 'Kids', selected: false, avatar: 'https://img.test/kids.png' },
+  ]
+  const document = serviceSettings(account, account.profileList)
+  assert.equal(document.image, 'https://img.test/nico.png')
+  assert.deepEqual(document.fields.find((field) => field.key === 'profileId')?.options, [
+    { value: 'p1', label: 'Nico', description: 'Current profile', image: 'https://img.test/nico.png', backdrop: 'https://img.test/nico-wall.png' },
+    { value: 'p2', label: 'Kids', description: undefined, image: 'https://img.test/kids.png', backdrop: undefined },
+  ])
+
+  const switched = await saveServiceSettings(account, { accountAction: 'profile', profileId: 'p2' }, () => account.accountProfiles())
+  assert.equal(switched.image, 'https://img.test/kids.png')
+  const signedOut = await saveServiceSettings(account, { accountAction: 'logout' })
+  assert.equal(signedOut.image, undefined)
 })
 
 test('a cookie sign-in with several profiles is set up without a profile step it cannot take', async () => {

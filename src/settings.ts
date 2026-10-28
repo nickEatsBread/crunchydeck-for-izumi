@@ -17,6 +17,10 @@ export interface ServiceSettingOption {
   submittingLabel?: string
   intent?: 'primary' | 'danger'
   hideSubmit?: boolean
+  /** A small square picture beside the label (a profile avatar). */
+  image?: string
+  /** A wide picture behind the option (a profile wallpaper). */
+  backdrop?: string
 }
 
 export interface ServiceSettingField {
@@ -44,6 +48,8 @@ export interface ServiceSettingsDocument {
   version: 1
   title: string
   description: string
+  /** A picture shown with the description: the signed-in profile's avatar. */
+  image?: string
   notice?: ServiceSettingsNotice
   refreshAfterMs?: number
   /** Signed in with a profile chosen: izumi's pack setup can move on. */
@@ -194,6 +200,7 @@ export function serviceSettings(
     version: 1,
     title: 'Crunchyroll settings',
     description: description(status, current, details),
+    image: status.authenticated ? current?.avatar : undefined,
     notice: choosing && flow.status !== 'waiting'
       ? {
           tone: 'info',
@@ -228,6 +235,8 @@ export function serviceSettings(
           value: profile.id,
           label: profile.name,
           description: profile.selected ? 'Current profile' : undefined,
+          image: profile.avatar,
+          backdrop: profile.wallpaper,
         })),
       },
       {
