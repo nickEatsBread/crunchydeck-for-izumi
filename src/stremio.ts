@@ -423,11 +423,16 @@ export class StremioCatalog {
     }
   }
 
-  /** The episode's stream: what the onlinestream `play` call returns, plus where to report progress. */
+  /** The episode's stream: what the onlinestream `play` call returns, plus where to report progress
+   *  and the episode's skip markers (`izumi.skip`, left out when it has none). */
   async stream(id: string, baseUrl: string): Promise<Array<Record<string, unknown>>> {
     const episodeId = stripPrefix(id)
     if (!episodeId || !this.signedIn()) return []
-    const server = await this.app.episodeServer(episodeId, DEFAULT_LOCALE, baseUrl)
+    // The markers are asked beside the play session, so the stream waits on the slower of the two.
+    const [server, skip] = await Promise.all([
+      this.app.episodeServer(episodeId, DEFAULT_LOCALE, baseUrl),
+      this.app.content.markers(episodeId),
+    ])
     return server.videoSources.map((source) => ({
       ...source,
       name: 'Crunchyroll',
@@ -437,6 +442,7 @@ export class StremioCatalog {
         onlinestream: true,
         headers: server.headers,
         progressUrl: `${baseUrl}/stremio/progress?video=${encodeURIComponent(id)}`,
+        ...(skip.length ? { skip } : {}),
       },
     }))
   }

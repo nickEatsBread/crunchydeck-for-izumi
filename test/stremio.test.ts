@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { Content, feedRows, heroCards, panels, pickImage } from '../src/cr/content.js'
+import { Content, feedRows, heroCards, panels, pickImage, skipMarkers } from '../src/cr/content.js'
 import type { CrRequest, CrTransport } from '../src/cr/http.js'
 import { audioLabel, categoryId, episodeLabel, FALLBACK_CATEGORIES, heroMeta, metaPreview, parseExtra, pickSeasons, ratingOf, StremioCatalog, stripPrefix, videoOf, withFacts, withResume } from '../src/stremio.js'
 
@@ -214,6 +214,85 @@ test('a listing narrowed to a category asks Crunchyroll browse for it, keeping t
   await new Promise((resolve) => setImmediate(resolve))
   await catalog.catalog('cr-newest', 'genre=Isekai')
   assert.deepEqual([browse().get('categories'), browse().get('sort_by')], ['isekai-id', 'newly_added'])
+})
+
+test('skip markers read in order, a missing start is the episode start, unusable blocks are left out', () => {
+  assert.deepEqual(skipMarkers({
+    mediaId: 'E1',
+    credits: { start: 1300.5, end: 1390, type: 'credits' },
+    intro: { start: 90, end: 180, type: 'intro' },
+    recap: { start: null, end: 30 },
+    preview: { start: 1400, end: 1380 },
+    junk: { start: 1, end: 2 },
+  }), [
+    { type: 'recap', start: 0, end: 30 },
+    { type: 'intro', start: 90, end: 180 },
+    { type: 'credits', start: 1300.5, end: 1390 },
+  ])
+  assert.deepEqual(skipMarkers({ intro: { start: '1', end: 20 }, credits: { start: -5, end: 20 }, recap: { end: Infinity } }), [])
+  assert.deepEqual(skipMarkers(null), [])
+})
+
+/** A signed-in catalog whose fake CDN answers the skip-events file with `markers` (a status, a
+ *  body, or a throw), beside a stub play session. */
+function streamService(markers: () => { status: number; body: unknown }) {
+  const asked: Array<{ url: string; headers: Record<string, string> }> = []
+  const transport: CrTransport = {
+    name: 'fake',
+    async request(req: CrRequest) {
+      asked.push({ url: req.url, headers: req.headers ?? {} })
+      const { status, body } = markers()
+      const text = JSON.stringify(body)
+      return { status, url: req.url, headers: {}, body: Buffer.from(text), get text() { return text } }
+    },
+  }
+  const auth = { profile: 'tv', accessToken: async () => 'token', status: () => ({ authenticated: true, accountId: 'acct' }) }
+  const content = new Content(transport, auth as never)
+  const episodeServer = async () => ({ server: 'Crunchyroll', headers: { Referer: 'r' }, videoSources: [{ url: 'http://127.0.0.1:1/v/s/manifest.mpd' }] })
+  return { asked, catalog: new StremioCatalog({ auth, content, episodeServer } as never) }
+}
+
+test('a stream carries its episode skip markers, read from the static CDN without a token', async () => {
+  const { asked, catalog } = streamService(() => ({ status: 200, body: { intro: { start: 90, end: 180 }, credits: { start: 1300, end: 1390 } } }))
+  const [stream] = await catalog.stream('cr:E1', 'http://127.0.0.1:1')
+  assert.deepEqual((stream!.izumi as { skip?: unknown }).skip, [
+    { type: 'intro', start: 90, end: 180 },
+    { type: 'credits', start: 1300, end: 1390 },
+  ])
+  assert.equal(asked[0]!.url, 'https://static.crunchyroll.com/skip-events/production/E1.json')
+  assert.equal(asked[0]!.headers.Authorization, undefined)
+  // Kept for a while: the next stream for the episode does not ask again.
+  await catalog.stream('cr:E1', 'http://127.0.0.1:1')
+  assert.equal(asked.length, 1)
+})
+
+test('an episode without markers, or a failed marker fetch, still gets its stream, without a skip field', async () => {
+  for (const markers of [
+    () => ({ status: 404, body: { message: 'not found' } }),
+    () => ({ status: 403, body: {} }),
+    () => ({ status: 503, body: {} }),
+    () => { throw new Error('offline') },
+  ]) {
+    const { catalog } = streamService(markers)
+    const streams = await catalog.stream('cr:E1', 'http://127.0.0.1:1')
+    assert.equal(streams.length, 1)
+    const izumi = streams[0]!.izumi as Record<string, unknown>
+    assert.equal(izumi.onlinestream, true)
+    assert.equal('skip' in izumi, false)
+  }
+})
+
+test('a failed marker fetch is asked again; a 404 is kept', async () => {
+  let fail = true
+  const flaky = streamService(() => { if (fail) throw new Error('offline'); return { status: 200, body: { intro: { start: 1, end: 2 } } } })
+  await flaky.catalog.stream('cr:E1', 'http://127.0.0.1:1')
+  fail = false
+  const [stream] = await flaky.catalog.stream('cr:E1', 'http://127.0.0.1:1')
+  assert.deepEqual((stream!.izumi as { skip?: unknown }).skip, [{ type: 'intro', start: 1, end: 2 }])
+  const missing = streamService(() => ({ status: 404, body: {} }))
+  await missing.catalog.stream('cr:E1', 'http://127.0.0.1:1')
+  await missing.catalog.stream('cr:E1', 'http://127.0.0.1:1')
+  assert.equal(missing.asked.length, 1)
 })
 
 test('a category backdrop is the variant nearest a Deck screen, from either answer shape', async () => {

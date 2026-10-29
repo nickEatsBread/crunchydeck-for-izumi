@@ -118,6 +118,33 @@ export interface Playhead {
   fullyWatched: boolean
 }
 
+/** One skip marker of an episode, in seconds. */
+export interface SkipMarker {
+  type: 'intro' | 'recap' | 'credits' | 'preview'
+  start: number
+  end: number
+}
+
+const SKIP_TYPES = ['intro', 'recap', 'credits', 'preview'] as const
+
+/** The markers in an episode's skip-events file (`{ intro: { start, end }, credits: … }`), in
+ *  order. A block without a usable end is left out; a missing start is the episode's start, as
+ *  Crunchy Deck reads it. */
+export function skipMarkers(json: unknown): SkipMarker[] {
+  const file = json && typeof json === 'object' ? json as Record<string, { start?: unknown; end?: unknown } | undefined> : {}
+  return SKIP_TYPES.flatMap((type) => {
+    const start = file[type]?.start ?? 0
+    const end = file[type]?.end
+    return typeof start === 'number' && typeof end === 'number' && Number.isFinite(end) && start >= 0 && end > start
+      ? [{ type, start, end }]
+      : []
+  }).sort((a, b) => a.start - b.start)
+}
+
+/** How long a marker answer is kept, and how long stream resolution waits for one. */
+const MARKERS_TTL_MS = 10 * 60_000
+const MARKERS_TIMEOUT_MS = 1_500
+
 /** The home-feed panels worth a row, as Crunchy Deck keeps them (feed order). */
 const ROW_TYPES = new Set([
   'recommendations', 'history', 'watchlist', 'recent_episodes', 'browse', 'series', 'music_video', 'because_you_watched',
@@ -428,6 +455,23 @@ export class Content {
       await this.request(`/content/v2/${account}/watchlist/${encodeURIComponent(contentId)}?locale=${DEFAULT_LOCALE}`, { method: 'DELETE' })
     }
     this.invalidate()
+  }
+
+  /** An episode's skip markers. They sit on the static CDN, which needs no sign-in, so no token is
+   *  sent. A 4xx is the CDN saying the episode has none and is kept like any answer; a failed or
+   *  slow fetch gives none this time and is asked again next time. Never throws. */
+  async markers(episodeId: string): Promise<SkipMarker[]> {
+    const url = `${HOSTS.static}/skip-events/production/${encodeURIComponent(episodeId)}.json`
+    const cached = this.cache.get(url)
+    if (cached && Date.now() - cached.at < MARKERS_TTL_MS) return cached.value as SkipMarker[]
+    try {
+      const res = await this.transport.request({ url, headers: crHeaders({ profile: this.auth.profile }), timeoutMs: MARKERS_TIMEOUT_MS })
+      const value = res.status >= 400 && res.status < 500 ? [] : skipMarkers(await jsonOrThrow(res))
+      this.cache.set(url, { at: Date.now(), value })
+      return value
+    } catch {
+      return []
+    }
   }
 
   async watchlist(): Promise<CrPanel[]> {
