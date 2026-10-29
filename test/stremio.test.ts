@@ -215,3 +215,12 @@ test('a listing narrowed to a category asks Crunchyroll browse for it, keeping t
   await catalog.catalog('cr-newest', 'genre=Isekai')
   assert.deepEqual([browse().get('categories'), browse().get('sort_by')], ['isekai-id', 'newly_added'])
 })
+
+test('a category backdrop is the variant nearest a Deck screen, from either answer shape', async () => {
+  const { categoryImage } = await import('../src/cr/content.js')
+  const v = (width: number) => ({ source: `https://img.example/${width}.jpg`, width })
+  assert.equal(categoryImage({ background: [v(640), v(1280), v(1920)] }), 'https://img.example/1280.jpg')
+  assert.equal(categoryImage({ background: [[v(480), v(1440)]] }), 'https://img.example/1440.jpg')
+  assert.equal(categoryImage({ background: [{ source: 'http://img.example/x.jpg', width: 1280 }] }), undefined)
+  assert.equal(categoryImage(undefined), undefined)
+})

@@ -98,6 +98,19 @@ export interface HeroCard {
 export interface CrCategory {
   id: string
   title: string
+  /** Backdrop for the category (izumi's Categories screen). */
+  image?: string
+}
+
+/** A category's backdrop: the variant nearest 1280 wide (a Steam Deck's screen; a larger one only
+ *  costs decode time there). Newer answers nest the variants one level deeper. */
+export function categoryImage(images: unknown): string | undefined {
+  const sets = images as { background?: unknown; low?: unknown } | undefined
+  const set = sets?.background ?? sets?.low
+  const variants = (Array.isArray(set) ? set.flat() : []) as Array<{ source?: unknown; width?: unknown }>
+  const usable = variants.filter((variant) => typeof variant?.source === 'string' && variant.source.startsWith('https://'))
+  usable.sort((a, b) => Math.abs(Number(a.width) - 1280) - Math.abs(Number(b.width) - 1280))
+  return usable[0]?.source as string | undefined
 }
 
 export interface Playhead {
@@ -315,12 +328,13 @@ export class Content {
   /** The genres Browse narrows to, as Crunchy Deck's Categories screen reads them: the id goes to
    *  `browse?categories=`, the title is what the viewer sees. */
   async categories(): Promise<CrCategory[]> {
-    const json = await this.request<{ data?: Array<{ id?: unknown; title?: unknown; localization?: { title?: unknown } }> }>(
+    const json = await this.request<{ data?: Array<{ id?: unknown; title?: unknown; localization?: { title?: unknown }; images?: unknown }> }>(
       `/content/v2/discover/categories?locale=${DEFAULT_LOCALE}`,
     )
     return (json?.data ?? []).flatMap((row) => {
       const title = row?.localization?.title ?? row?.title ?? row?.id
-      return typeof row?.id === 'string' && row.id && typeof title === 'string' ? [{ id: row.id, title }] : []
+      const image = categoryImage(row?.images)
+      return typeof row?.id === 'string' && row.id && typeof title === 'string' ? [{ id: row.id, title, ...(image ? { image } : {}) }] : []
     })
   }
 

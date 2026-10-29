@@ -61,7 +61,7 @@ export interface CatalogEntry {
   type: 'series' | 'movie'
   id: string
   name: string
-  extra?: Array<{ name: string; isRequired?: boolean; options?: string[] }>
+  extra?: Array<{ name: string; isRequired?: boolean; options?: string[]; izumi?: { images?: Record<string, string> } }>
   izumi?: { hero?: true; continue?: true; home?: boolean; homeFilters?: boolean }
 }
 
@@ -303,7 +303,10 @@ export class StremioCatalog {
     const signedIn = this.signedIn()
     if (signedIn) this.loadCategories()
     const feed = signedIn ? await this.app.content.homeRows().catch(() => []) : []
-    const genre = { name: 'genre', options: (this.categories ?? FALLBACK_CATEGORIES).map((category) => category.title) }
+    const categories = this.categories ?? FALLBACK_CATEGORIES
+    const images = Object.fromEntries(categories.flatMap((category) => (category.image ? [[category.title, category.image]] : [])))
+    // izumi's Categories screen shows a category's artwork behind it (an extra field other clients skip).
+    const genre = { name: 'genre', options: categories.map((category) => category.title), ...(Object.keys(images).length ? { izumi: { images } } : {}) }
     const catalogs: CatalogEntry[] = [
       { type: 'series', id: 'cr-hero', name: 'Featured', izumi: { hero: true } },
       ...feed.map((row) => ({
