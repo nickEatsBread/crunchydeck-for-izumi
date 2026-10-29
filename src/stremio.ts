@@ -543,6 +543,8 @@ export class StremioCatalog {
   async stream(id: string, baseUrl: string): Promise<Array<Record<string, unknown>>> {
     const episodeId = stripPrefix(id)
     if (!episodeId || !this.signedIn()) return []
+    // A play is coming: the licence server's connection opens while the stream is read.
+    this.app.play.warmLicense()
     // The markers are asked beside the play session, so the stream waits on the slower of the two.
     const [server, skip, subtitle] = await Promise.all([
       this.app.episodeServer(episodeId, DEFAULT_LOCALE, baseUrl),

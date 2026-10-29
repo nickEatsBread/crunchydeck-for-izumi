@@ -185,6 +185,9 @@ export class PlayService {
   private liveResolveQueue: Promise<void> = Promise.resolve()
   /** TV accounts allow one live play token. Last successful resolve owns it. */
   private liveSessionId: string | undefined
+  /** The licence address the last session used, and when its connection was last opened ahead. */
+  private licenseUrl: string | undefined
+  private licenseWarmedAt = 0
   private persistedLeaksJob: Promise<void> | undefined
 
   constructor(
@@ -570,7 +573,28 @@ export class PlayService {
     }
   }
 
+  /** Opens the connection to the licence server before the licence is asked for, with the CORS
+   *  preflight a browser sends it anyway: the first licence of a run otherwise waited for a fresh
+   *  TLS handshake (about a second on the Steam Deck against half a second once warm). */
+  warmLicense(): void {
+    if (Date.now() - this.licenseWarmedAt < 30_000) return
+    this.licenseWarmedAt = Date.now()
+    const url = (this.licenseUrl ?? HOSTS.license).replace(/[?&]specconform=true/gi, '').replace(/\?$/, '')
+    void this.transport.request({
+      url,
+      method: 'OPTIONS',
+      headers: {
+        Origin: HOSTS.static,
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'authorization,content-type,x-cr-content-id,x-cr-video-token',
+        'User-Agent': this.auth.profile === 'tv' ? TIZEN_UA : CHROME_UA,
+      },
+      timeoutMs: 10_000,
+    }).catch(() => {})
+  }
+
   async fetchLicense(session: PlaySession, challenge: Buffer): Promise<Buffer> {
+    if (session.drmUrl) this.licenseUrl = session.drmUrl
     await this.ensureLiveToken(session)
     const token = await this.auth.accessToken()
     const urls = [

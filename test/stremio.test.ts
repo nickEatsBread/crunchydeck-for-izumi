@@ -485,8 +485,15 @@ function streamService(markers: () => { status: number; body: unknown }, subtitl
     audio: 'sub',
     subtitles: [{ url: 'en', language: 'en-US', kind: 'subtitles', isDefault: true }, { url: 'fr', language: 'fr-FR', kind: 'subtitles' }],
   }] })
-  return { asked, catalog: new StremioCatalog({ auth, content, episodeServer } as never) }
+  const play = { warmed: 0, warmLicense() { play.warmed++ } }
+  return { asked, play, catalog: new StremioCatalog({ auth, content, episodeServer, play } as never) }
 }
+
+test('opens the licence connection as soon as a stream is asked', async () => {
+  const service = streamService(() => ({ status: 404, body: {} }))
+  await service.catalog.stream('cr:E1', 'http://127.0.0.1:1')
+  assert.equal(service.play.warmed, 1)
+})
 
 test('a stream carries its episode skip markers, read from the static CDN without a token', async () => {
   const { asked, catalog } = streamService(() => ({ status: 200, body: { intro: { start: 90, end: 180 }, credits: { start: 1300, end: 1390 } } }))
