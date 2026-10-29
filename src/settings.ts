@@ -28,7 +28,9 @@ export interface ServiceSettingField {
   label: string
   description?: string
   type: 'text' | 'password' | 'number' | 'boolean' | 'select'
-  role?: 'action'
+  /** 'action' picks what a save does; 'profile' is the profile picker, which izumi may offer as
+   *  "Who's watching?" outside the settings sheet (it saves `{ accountAction: 'profile', profileId }`). */
+  role?: 'action' | 'profile'
   visibleWhen?: ServiceSettingCondition
   required?: boolean
   placeholder?: string
@@ -229,6 +231,7 @@ export function serviceSettings(
         key: 'profileId',
         label: 'Profile',
         type: 'select',
+        role: 'profile',
         visibleWhen: { key: 'accountAction', equals: 'profile' },
         required: true,
         options: profiles.map((profile) => ({

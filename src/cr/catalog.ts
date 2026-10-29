@@ -43,6 +43,8 @@ export interface SeasonItem {
   audio_locale?: string
   identifier?: string
   series_id?: string
+  /** The season in each audio (its dubs), by season id. */
+  versions?: Array<{ audio_locale?: string; guid?: string; original?: boolean }>
 }
 
 export interface EpisodeItem {
@@ -145,13 +147,13 @@ export class Catalog {
     return hits
   }
 
-  async seasons(seriesId: string): Promise<SeasonItem[]> {
-    const cacheKey = `${this.auth.profile}:${seriesId}`
+  async seasons(seriesId: string, locale = DEFAULT_LOCALE): Promise<SeasonItem[]> {
+    const cacheKey = `${this.auth.profile}:${locale}:${seriesId}`
     const cached = this.seasonCache.get(cacheKey)
     if (cached && Date.now() - cached.at < 10 * 60_000) return cached.seasons
     const token = await this.auth.accessToken()
     const profile = this.auth.profile
-    const url = `${apiBase(profile)}/content/v2/cms/series/${encodeURIComponent(seriesId)}/seasons?locale=${DEFAULT_LOCALE}`
+    const url = `${apiBase(profile)}/content/v2/cms/series/${encodeURIComponent(seriesId)}/seasons?locale=${locale}`
     const json = await this.cachedJson<CmsList<SeasonItem>>(
       url,
       crHeaders({ profile, authorization: `Bearer ${token}` }),
@@ -163,10 +165,10 @@ export class Catalog {
 
   /** A season's playable episodes (no clips), in order, with every audio version remembered for
    *  playback. Returns each episode with the id of the version in `audio`. */
-  async seasonEpisodes(seasonId: string, audio: string): Promise<Array<EpisodeItem & { number: number; guid: string }>> {
+  async seasonEpisodes(seasonId: string, audio: string, locale = DEFAULT_LOCALE): Promise<Array<EpisodeItem & { number: number; guid: string }>> {
     const token = await this.auth.accessToken()
     const profile = this.auth.profile
-    const url = `${apiBase(profile)}/content/v2/cms/seasons/${encodeURIComponent(seasonId)}/episodes?locale=${DEFAULT_LOCALE}`
+    const url = `${apiBase(profile)}/content/v2/cms/seasons/${encodeURIComponent(seasonId)}/episodes?locale=${locale}`
     const json = await this.cachedJson<CmsList<EpisodeItem>>(
       url,
       crHeaders({ profile, authorization: `Bearer ${token}` }),

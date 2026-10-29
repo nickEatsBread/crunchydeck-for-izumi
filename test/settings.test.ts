@@ -125,6 +125,10 @@ test('an account with several profiles asks who is watching before it counts as 
   assert.equal(asking.complete, false)
   assert.equal(asking.notice?.title, "Who's watching?")
   assert.deepEqual(asking.fields.find((field) => field.key === 'profileId')?.options?.map((option) => option.label), ['Nico', 'Kids'])
+  // izumi finds the picker by its role, to ask outside the settings sheet.
+  const picker = asking.fields.find((field) => field.role === 'profile')
+  assert.equal(picker?.key, 'profileId')
+  assert.deepEqual(picker?.visibleWhen, { key: 'accountAction', equals: 'profile' })
   assert.match(asking.description, /as Nico/)
 
   const saved = await saveServiceSettings(account, { accountAction: 'profile', profileId: 'p2' }, () => account.accountProfiles())
@@ -275,6 +279,20 @@ test('the sidecar exposes Izumi settings over the managed-service HTTP contract'
   const document = await read.json() as { version: number; title: string }
   assert.equal(document.version, 1)
   assert.equal(document.title, 'Crunchyroll settings')
+
+  // izumi's "Who's watching?" picker sends only the action and the profile.
+  await account.loginPassword('me@example.com', 'secret')
+  account.profileList = [{ id: 'p1', name: 'Nico', selected: true }, { id: 'p2', name: 'Kids', selected: false }]
+  const picked = await fetch(`${account.baseUrl}/__izumi/settings`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: 'tauri://localhost' },
+    body: JSON.stringify({ values: { accountAction: 'profile', profileId: 'p2' } }),
+  })
+  assert.equal(picked.status, 200)
+  assert.equal(account.switchedTo, 'p2')
+  const after = await picked.json() as { ok: boolean; complete: boolean; description: string; values: Record<string, unknown> }
+  assert.deepEqual([after.ok, after.complete, after.values.profileId], [true, true, 'p2'])
+  assert.match(after.description, /as Kids/)
 
   const save = await fetch(`${account.baseUrl}/__izumi/settings`, {
     method: 'POST',

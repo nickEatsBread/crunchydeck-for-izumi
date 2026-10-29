@@ -3,7 +3,7 @@
 // hero, metas with every season's episodes, and streams. Extras for izumi ride in an `izumi` field
 // that other clients ignore: ratings, Sub | Dub, playheads, the watchlist and where to report
 // progress.
-import type { CrunchyrollApp } from './app.js'
+import type { CrunchyrollApp, VideoSource } from './app.js'
 import { CRUNCHYROLL_ICON } from './brand.js'
 import { curationUrl, pickImage, type CrCategory, type CrPanel, type CrSeason, type CrSeriesMetadata, type HeroCard } from './cr/content.js'
 import type { EpisodeItem, SeasonItem } from './cr/catalog.js'
@@ -54,6 +54,8 @@ export interface StremioMeta {
     watchlist?: boolean
     watchlistUrl?: string
     isNew?: boolean
+    /** A series' seasons in Crunchyroll's order, with Crunchyroll's titles (see meta()). */
+    seasons?: Array<{ number: number; title: string }>
   }
 }
 
@@ -213,15 +215,43 @@ export function videoOf(episode: EpisodeItem & { number: number; guid: string },
   }
 }
 
-/** One season per number: Crunchyroll lists a season once per dub. The preferred audio wins. */
+/** One version of every season, in Crunchyroll's order: Crunchyroll can list a season once per dub.
+ *  A season's `versions` name its dubs; a listing without them is grouped by season number, so a
+ *  season in another audio under the same number counts as a dub. The preferred audio wins, else
+ *  the original, else the first listed. Different seasons sharing a number are all kept. */
 export function pickSeasons(seasons: SeasonItem[], audio: string): SeasonItem[] {
-  const byNumber = new Map<number, SeasonItem>()
-  for (const season of seasons) {
-    const n = season.season_number ?? 1
-    const current = byNumber.get(n)
-    if (!current || (season.audio_locale === audio && current.audio_locale !== audio)) byNumber.set(n, season)
+  const linked = (season: SeasonItem) => new Set((season.versions ?? []).flatMap((version) => (version.guid && version.guid !== season.id && seasons.some((other) => other.id === version.guid) ? [version.guid] : [])))
+  return seasons.filter((season) => {
+    const dubs = linked(season)
+    const group = dubs.size
+      ? seasons.filter((other) => other === season || dubs.has(other.id))
+      : seasons.filter((other) => (other.season_number ?? 1) === (season.season_number ?? 1) && !linked(other).size)
+    const original = group.find((other) => other.versions?.some((version) => version.guid === other.id && version.original)) ?? group[0]
+    return season.audio_locale === (group.some((other) => other.audio_locale === audio) ? audio : original?.audio_locale)
+  })
+}
+
+/** The `season` each picked season's videos carry: Crunchyroll's number, unless two seasons share one
+ *  (a second cour, a recap or a cut listed under the same number). A Stremio client groups episodes
+ *  by that number, so the seasons would merge into one; then all are numbered in Crunchyroll's order. */
+export function seasonNumbers(seasons: SeasonItem[]): number[] {
+  const numbers = seasons.map((season) => season.season_number ?? 1)
+  return new Set(numbers).size === numbers.length ? numbers : numbers.map((_number, index) => index + 1)
+}
+
+/** The profile's subtitle language as the stream's default track. '' turns subtitles off; a language
+ *  the episode does not offer (or only burned in, under a dub) leaves the default as it was. */
+export function withSubtitle(source: VideoSource, language: string | undefined): VideoSource {
+  // No preference (unset reads as '') keeps the stream's own default, English, rather than turning
+  // subtitles off: Japanese audio with no subtitles is the worse surprise.
+  if (!language) return source
+  const pick = source.subtitles.find((track) => track.language === language && track.kind !== 'captions' && (!track.switchUrl || source.audio === 'sub'))
+  if (!pick) return source
+  return {
+    ...source,
+    subtitles: source.subtitles.map((track) => ({ ...track, isDefault: track === pick })),
+    ...(source.share ? { share: withSubtitle(source.share, language) } : {}),
   }
-  return [...byNumber.entries()].sort((a, b) => a[0] - b[0]).map(([, season]) => season)
 }
 
 export function stripPrefix(id: string): string | undefined {
@@ -308,6 +338,8 @@ export class StremioCatalog {
   private categoriesJob?: Promise<void>
   private seasons?: CrSeason[]
   private seasonsJob?: Promise<void>
+  /** The locale the category and season lists were read in. */
+  private listsLocale?: string
   /** History pages by Crunchyroll page while a client pages by titles shown (`skip`): the page that
    *  follows each skip handed out, and the series listed so far. A skip of 0 starts it over. */
   private history?: { next: Map<number, number>; seen: Set<string> }
@@ -353,6 +385,12 @@ export class StremioCatalog {
   async manifest(): Promise<Record<string, unknown>> {
     const signedIn = this.signedIn()
     if (signedIn) {
+      // Their titles follow the display language: after a switch they are read again.
+      const locale = await this.app.content.locale()
+      if (locale !== this.listsLocale) {
+        this.listsLocale = locale
+        this.categoriesJob = this.seasonsJob = undefined
+      }
       this.loadCategories()
       this.loadSeasons()
     }
@@ -434,19 +472,25 @@ export class StremioCatalog {
     const watchlistP = content.inWatchlist(contentId).catch(() => undefined)
     // A series' seasons need only the id too: asked beside the object rather than after it (one
     // Crunchyroll round trip less). For a film the answer goes unused.
-    const seasonsP = this.app.catalog.seasons(contentId)
+    const localeP = content.locale()
+    const seasonsP = localeP.then((locale) => this.app.catalog.seasons(contentId, locale))
     seasonsP.catch(() => {})
-    const [object, audio] = await Promise.all([content.object(contentId), content.preferredAudio()])
+    const [object, audio, locale] = await Promise.all([content.object(contentId), content.preferredAudio(), localeP])
     if (!object) return undefined
     const preview = metaPreview(object)
     if (!preview) return undefined
     const videos: StremioVideo[] = []
     const episodes: Array<{ episode: EpisodeItem & { number: number; guid: string }; season?: number }> = []
+    let seasonList: Array<{ number: number; title: string }> | undefined
     if (object.type === 'series') {
       const seasons = pickSeasons(await seasonsP, audio)
-      const lists = await Promise.all(seasons.map((season) => this.app.catalog.seasonEpisodes(season.id, audio)))
-      seasons.forEach((season, index) => {
-        for (const episode of lists[index] ?? []) episodes.push({ episode, season: season.season_number })
+      const lists = await Promise.all(seasons.map((season) => this.app.catalog.seasonEpisodes(season.id, audio, locale)))
+      const numbers = seasonNumbers(seasons)
+      // izumi.seasons: [{ number, title }] per season, in Crunchyroll's order. `number` is the
+      // `season` its videos carry, `title` Crunchyroll's own name for it ("Season N" when it has none).
+      seasonList = seasons.map((season, index) => ({ number: numbers[index]!, title: season.title || `Season ${numbers[index]}` }))
+      lists.forEach((list, index) => {
+        for (const episode of list) episodes.push({ episode, season: numbers[index] })
       })
     } else {
       const movies = await content.movies(contentId).catch(() => [])
@@ -481,6 +525,7 @@ export class StremioCatalog {
       videos,
       izumi: {
         ...preview.izumi,
+        ...(seasonList ? { seasons: seasonList } : {}),
         ...(next ? {
           upNext: {
             videoId: PREFIX + next.id,
@@ -499,12 +544,13 @@ export class StremioCatalog {
     const episodeId = stripPrefix(id)
     if (!episodeId || !this.signedIn()) return []
     // The markers are asked beside the play session, so the stream waits on the slower of the two.
-    const [server, skip] = await Promise.all([
+    const [server, skip, subtitle] = await Promise.all([
       this.app.episodeServer(episodeId, DEFAULT_LOCALE, baseUrl),
       this.app.content.markers(episodeId),
+      this.app.content.preferences().then((prefs) => prefs.subtitleLanguage, () => undefined),
     ])
     return server.videoSources.map((source) => ({
-      ...source,
+      ...withSubtitle(source, subtitle),
       name: 'Crunchyroll',
       title: 'Crunchyroll',
       behaviorHints: { notWebReady: true, proxyHeaders: { request: server.headers } },

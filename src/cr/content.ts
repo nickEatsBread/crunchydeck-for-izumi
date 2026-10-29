@@ -5,6 +5,7 @@ import { DEFAULT_LOCALE, HOSTS, type ClientProfile } from './constants.js'
 import { crHeaders } from './headers.js'
 import { jsonOrThrow, type CrTransport } from './http.js'
 import type { Auth } from './auth.js'
+import { DISPLAY_LANGUAGES } from './languages.js'
 
 /** A profile's preferences that Crunchyroll applies across its apps. */
 export interface ProfilePreferences {
@@ -151,6 +152,9 @@ export function skipMarkers(json: unknown): SkipMarker[] {
 const MARKERS_TTL_MS = 10 * 60_000
 const MARKERS_TIMEOUT_MS = 1_500
 
+/** How long a profile's preferences are kept before they are read again. */
+const PREFERENCES_TTL_MS = 10 * 60_000
+
 /** The home-feed panels worth a row, as Crunchy Deck keeps them (feed order). */
 const ROW_TYPES = new Set([
   'recommendations', 'history', 'watchlist', 'recent_episodes', 'browse', 'series', 'music_video', 'because_you_watched',
@@ -231,6 +235,9 @@ function apiBase(profile: ClientProfile): string {
 
 export class Content {
   private cache = new Map<string, { at: number; value: unknown }>()
+  /** Kept apart from `cache` and keyed by profile: every catalogue request needs the locale, and a
+   *  playhead report (which clears `cache`) does not change it. */
+  private prefs?: { key: string; at: number; value: Promise<ProfilePreferences> }
 
   constructor(
     private transport: CrTransport,
@@ -296,7 +303,27 @@ export class Content {
     if (!Object.keys(body).length) return
     await this.request('/accounts/v1/me/profile', { method: 'PATCH', body })
     // Rows and the audio a meta picks follow these preferences.
+    this.prefs = undefined
     this.invalidate()
+  }
+
+  /** The current profile's preferences, read once a while and shared by concurrent callers. */
+  preferences(): Promise<ProfilePreferences> {
+    const status = this.auth.status()
+    const key = `${status.accountId}|${status.profileId}`
+    if (!this.prefs || this.prefs.key !== key || Date.now() - this.prefs.at > PREFERENCES_TTL_MS) {
+      const entry = { key, at: Date.now(), value: this.profilePreferences() }
+      this.prefs = entry
+      // A failed read is tried again by the next caller.
+      entry.value.catch(() => { if (this.prefs === entry) this.prefs = undefined })
+    }
+    return this.prefs.value
+  }
+
+  /** The display language, as the catalogue's `locale`; en-US when unset or not one Crunchyroll offers. */
+  async locale(): Promise<string> {
+    const language = await this.preferences().then((prefs) => prefs.displayLanguage, () => '')
+    return Object.hasOwn(DISPLAY_LANGUAGES, language) ? language : DEFAULT_LOCALE
   }
 
   /** Whether the account has a paid membership: the access token's `benefits` claim lists them.
@@ -306,32 +333,27 @@ export class Content {
   }
 
   async preferredAudio(): Promise<string> {
-    try {
-      const profile = await this.request<{ preferred_content_audio_language?: string }>('/accounts/v1/me/profile', { ttlMs: 10 * 60_000 })
-      return profile?.preferred_content_audio_language || 'ja-JP'
-    } catch {
-      return 'ja-JP'
-    }
+    return (await this.preferences().catch(() => undefined))?.audioLanguage || 'ja-JP'
   }
 
   async homeRows(): Promise<FeedRow[]> {
-    const audio = await this.preferredAudio()
+    const [audio, locale] = await Promise.all([this.preferredAudio(), this.locale()])
     const feed = await this.request(
-      `/content/v2/discover/${this.account()}/home_feed?start=0&n=100&preferred_audio_language=${audio}&locale=${DEFAULT_LOCALE}`,
+      `/content/v2/discover/${this.account()}/home_feed?start=0&n=100&preferred_audio_language=${audio}&locale=${locale}`,
       { ttlMs: 60_000 },
     )
     return feedRows(feed)
   }
 
   async rowItems(row: FeedRow): Promise<CrPanel[]> {
-    const path = row.link ?? `/content/v2/cms/objects/${row.ids!.map(encodeURIComponent).join(',')}?locale=${DEFAULT_LOCALE}`
+    const path = row.link ?? `/content/v2/cms/objects/${row.ids!.map(encodeURIComponent).join(',')}?locale=${await this.locale()}`
     const json = await this.request<{ data?: unknown[]; items?: unknown[] }>(path, { ttlMs: 60_000 })
     return panels(json?.data ?? json?.items)
   }
 
   async hero(): Promise<HeroCard[]> {
     try {
-      const tree = await this.request(`${HOSTS.www}/f/v1/home?locale=${DEFAULT_LOCALE}`, { ttlMs: 10 * 60_000 })
+      const tree = await this.request(`${HOSTS.www}/f/v1/home?locale=${await this.locale()}`, { ttlMs: 10 * 60_000 })
       const cards = heroCards(tree)
       if (cards.length) return cards
     } catch {
@@ -348,7 +370,7 @@ export class Content {
       start: String(opts.start ?? 0),
       sort_by: opts.sort ?? 'popularity',
       type: 'series',
-      locale: DEFAULT_LOCALE,
+      locale: await this.locale(),
     })
     if (opts.categories) params.set('categories', opts.categories)
     const tag = opts.seasonalTag ?? (opts.seasonal ? await this.currentSeason() : undefined)
@@ -361,7 +383,7 @@ export class Content {
    *  `browse?categories=`, the title is what the viewer sees. */
   async categories(): Promise<CrCategory[]> {
     const json = await this.request<{ data?: Array<{ id?: unknown; title?: unknown; localization?: { title?: unknown }; images?: unknown }> }>(
-      `/content/v2/discover/categories?locale=${DEFAULT_LOCALE}`,
+      `/content/v2/discover/categories?locale=${await this.locale()}`,
     )
     return (json?.data ?? []).flatMap((row) => {
       const title = row?.localization?.title ?? row?.title ?? row?.id
@@ -374,7 +396,7 @@ export class Content {
    *  is the current one. */
   async seasons(): Promise<CrSeason[]> {
     const json = await this.request<{ data?: Array<{ id?: unknown; title?: unknown; localization?: { title?: unknown } }> }>(
-      `/content/v2/discover/seasonal_tags?locale=${DEFAULT_LOCALE}`,
+      `/content/v2/discover/seasonal_tags?locale=${await this.locale()}`,
       { ttlMs: 60 * 60_000 },
     )
     return (json?.data ?? []).flatMap((row) => {
@@ -390,7 +412,7 @@ export class Content {
   async search(query: string): Promise<CrPanel[]> {
     if (!query.trim()) return []
     const json = await this.request<{ data?: Array<{ items?: unknown[] }> | unknown[] }>(
-      `/content/v2/discover/search?q=${encodeURIComponent(query)}&n=60&start=0&type=series,movie_listing&locale=${DEFAULT_LOCALE}`,
+      `/content/v2/discover/search?q=${encodeURIComponent(query)}&n=60&start=0&type=series,movie_listing&locale=${await this.locale()}`,
       { ttlMs: 5 * 60_000 },
     )
     const data = json?.data ?? []
@@ -399,7 +421,7 @@ export class Content {
   }
 
   async object(id: string): Promise<CrPanel | undefined> {
-    const json = await this.request<{ data?: unknown[] }>(`/content/v2/cms/objects/${encodeURIComponent(id)}?locale=${DEFAULT_LOCALE}`, { ttlMs: 10 * 60_000 })
+    const json = await this.request<{ data?: unknown[] }>(`/content/v2/cms/objects/${encodeURIComponent(id)}?locale=${await this.locale()}`, { ttlMs: 10 * 60_000 })
     return panels(json?.data)[0]
   }
 
@@ -408,7 +430,7 @@ export class Content {
     const out = new Map<string, CrPanel>()
     if (!ids.length) return out
     const json = await this.request<{ data?: unknown[] }>(
-      `/content/v2/cms/objects/${ids.map(encodeURIComponent).join(',')}?locale=${DEFAULT_LOCALE}`,
+      `/content/v2/cms/objects/${ids.map(encodeURIComponent).join(',')}?locale=${await this.locale()}`,
       { ttlMs: 10 * 60_000 },
     )
     for (const panel of panels(json?.data)) out.set(panel.id, panel)
@@ -418,7 +440,7 @@ export class Content {
   /** A movie listing's movies (usually one). */
   async movies(listingId: string): Promise<CrPanel[]> {
     const json = await this.request<{ data?: unknown[] }>(
-      `/content/v2/cms/movie_listings/${encodeURIComponent(listingId)}/movies?locale=${DEFAULT_LOCALE}`,
+      `/content/v2/cms/movie_listings/${encodeURIComponent(listingId)}/movies?locale=${await this.locale()}`,
       { ttlMs: 10 * 60_000 },
     )
     return panels(json?.data)
@@ -443,7 +465,7 @@ export class Content {
   /** Where to resume a series (or what follows an episode): the episode, its playhead, whether it's done. */
   async upNext(id: string): Promise<{ panel: CrPanel; playhead: number; fullyWatched: boolean } | undefined> {
     const json = await this.request<{ data?: Array<{ panel?: unknown; playhead?: number; fully_watched?: boolean }> }>(
-      `/content/v2/discover/up_next/${encodeURIComponent(id)}?locale=${DEFAULT_LOCALE}`,
+      `/content/v2/discover/up_next/${encodeURIComponent(id)}?locale=${await this.locale()}`,
     )
     const first = json?.data?.[0]
     const panel = first?.panel ? panels([first.panel])[0] : undefined
@@ -494,7 +516,7 @@ export class Content {
   /** The watchlist from `start`, the latest added first. */
   async watchlist(start = 0, n = 100): Promise<CrPanel[]> {
     const json = await this.request<{ data?: unknown[] }>(
-      `/content/v2/discover/${this.account()}/watchlist?order=desc&n=${n}&start=${start}&sort_by=date_added&locale=${DEFAULT_LOCALE}`,
+      `/content/v2/discover/${this.account()}/watchlist?order=desc&n=${n}&start=${start}&sort_by=date_added&locale=${await this.locale()}`,
       { ttlMs: 60_000 },
     )
     return panels(json?.data)
@@ -504,7 +526,7 @@ export class Content {
    *  a playhead report forgets it, so it follows what was just watched. */
   async history(page: number, size = 100): Promise<CrPanel[]> {
     const json = await this.request<{ data?: unknown[] }>(
-      `/content/v2/${this.account()}/watch-history?page_size=${size}&page=${page}&locale=${DEFAULT_LOCALE}`,
+      `/content/v2/${this.account()}/watch-history?page_size=${size}&page=${page}&locale=${await this.locale()}`,
       { ttlMs: 60_000 },
     )
     return panels(json?.data)

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Content, feedRows, heroCards, panels, pickImage, skipMarkers } from '../src/cr/content.js'
 import type { CrRequest, CrTransport } from '../src/cr/http.js'
-import { audioLabel, categoryId, episodeLabel, FALLBACK_CATEGORIES, heroMeta, metaPreview, parseExtra, pickSeasons, ratingOf, seasonTitleOf, StremioCatalog, stripPrefix, videoOf, withFacts, withResume } from '../src/stremio.js'
+import type { VideoSource } from '../src/app.js'
+import { audioLabel, categoryId, episodeLabel, FALLBACK_CATEGORIES, heroMeta, metaPreview, parseExtra, pickSeasons, ratingOf, seasonNumbers, seasonTitleOf, StremioCatalog, stripPrefix, videoOf, withFacts, withResume, withSubtitle } from '../src/stremio.js'
 
 const images = (kind: string) => ({ [kind]: [[{ source: `https://img/${kind}/320`, width: 320 }, { source: `https://img/${kind}/640`, width: 640 }, { source: `https://img/${kind}/1920`, width: 1920 }]] })
 
@@ -94,7 +95,7 @@ test('a history episode becomes a Continue Watching card for its series', () => 
   assert.deepEqual(metaPreview(done!)!.izumi?.episode, { videoId: 'cr:E9', label: 'S2 E1' })
 })
 
-test('one season per number, the preferred audio first', () => {
+test('without version links, a season in another audio under the same number is a dub: the preferred audio wins', () => {
   const picked = pickSeasons([
     { id: 'en1', season_number: 1, audio_locale: 'en-US' },
     { id: 'ja1', season_number: 1, audio_locale: 'ja-JP' },
@@ -102,6 +103,46 @@ test('one season per number, the preferred audio first', () => {
     { id: 'de1', season_number: 1, audio_locale: 'de-DE' },
   ], 'ja-JP')
   assert.deepEqual(picked.map((season) => season.id), ['ja1', 'ja2'])
+})
+
+test('a season comes in the preferred audio, else its original; different seasons sharing a number all stay, numbered apart', () => {
+  const versions = [{ audio_locale: 'ja-JP', guid: 'A', original: true }, { audio_locale: 'en-US', guid: 'Aen' }]
+  const list = [
+    { id: 'Aen', season_number: 1, audio_locale: 'en-US', versions },
+    { id: 'A', season_number: 1, audio_locale: 'ja-JP', versions },
+    { id: 'B', season_number: 1, audio_locale: 'ja-JP' },
+    { id: 'C', season_number: 2, audio_locale: 'ja-JP', versions: [{ audio_locale: 'ja-JP', guid: 'C', original: true }, { audio_locale: 'de-DE', guid: 'not-listed' }] },
+  ]
+  assert.deepEqual(pickSeasons(list, 'ja-JP').map((season) => season.id), ['A', 'B', 'C'])
+  assert.deepEqual(pickSeasons(list, 'en-US').map((season) => season.id), ['Aen', 'B', 'C'])
+  // No version in that audio: the original, though Crunchyroll listed the dub first.
+  assert.deepEqual(pickSeasons(list, 'fr-FR').map((season) => season.id), ['A', 'B', 'C'])
+  assert.deepEqual(seasonNumbers(pickSeasons(list, 'ja-JP')), [1, 2, 3])
+  // Unique numbers stay Crunchyroll's; a season without one counts as 1.
+  assert.deepEqual(seasonNumbers([{ id: 'x', season_number: 1 }, { id: 'y', season_number: 3 }]), [1, 3])
+  assert.deepEqual(seasonNumbers([{ id: 'x', season_number: 1 }, { id: 'y', season_number: 3 }, { id: 'z' }]), [1, 2, 3])
+})
+
+test('the profile subtitle language is the default track; no preference or one not offered changes nothing', () => {
+  const source = {
+    url: 'u', type: 'dash', quality: 'adaptive', audio: 'sub',
+    subtitles: [
+      { url: 'en', language: 'en-US', kind: 'subtitles', isDefault: true },
+      { url: 'fr', language: 'fr-FR', kind: 'subtitles' },
+      { url: 'fr-cc', language: 'fr-FR', kind: 'captions' },
+      { url: 'de', language: 'de-DE', kind: 'subtitles', switchUrl: 'hard-de' },
+    ],
+  } as VideoSource
+  const defaults = (out: VideoSource) => out.subtitles.filter((track) => track.isDefault).map((track) => track.url)
+  assert.deepEqual(defaults(withSubtitle(source, 'fr-FR')), ['fr'])
+  assert.deepEqual(defaults(withSubtitle(source, 'de-DE')), ['de'])
+  assert.equal(withSubtitle(source, ''), source)
+  assert.equal(withSubtitle(source, 'it-IT'), source)
+  assert.equal(withSubtitle(source, undefined), source)
+  // Burned-in subtitles are not forced over a dub.
+  assert.deepEqual(defaults(withSubtitle({ ...source, audio: 'dub' }, 'de-DE')), ['en'])
+  // A Watch Together guest's copy gets the same choice.
+  assert.deepEqual(defaults(withSubtitle({ ...source, share: source }, 'fr-FR').share!), ['fr'])
 })
 
 test('episodes carry their stills, durations and progress', () => {
@@ -137,7 +178,7 @@ test('a category title maps to its browse id: the live list, then the built-in o
 })
 
 /** A signed-in service over a fake Crunchyroll: answers by path, records every URL asked for. */
-function fakeService(answer: (url: URL) => unknown, signedIn = true) {
+function fakeService(answer: (url: URL) => unknown, signedIn = true, app: Record<string, unknown> = {}) {
   const urls: URL[] = []
   const transport: CrTransport = {
     name: 'fake',
@@ -148,10 +189,71 @@ function fakeService(answer: (url: URL) => unknown, signedIn = true) {
       return { status: 200, url: req.url, headers: {}, body: Buffer.from(text), get text() { return text } }
     },
   }
-  const auth = { profile: 'tv', accessToken: async () => 'token', status: () => (signedIn ? { authenticated: true, accountId: 'acct' } : { authenticated: false }) }
+  const auth: { profile: string; accessToken: () => Promise<string>; status: () => object } = { profile: 'tv', accessToken: async () => 'token', status: () => (signedIn ? { authenticated: true, accountId: 'acct' } : { authenticated: false }) }
   const content = new Content(transport, auth as never)
-  return { urls, content, catalog: new StremioCatalog({ auth, content } as never) }
+  return { urls, auth, content, catalog: new StremioCatalog({ auth, content, ...app } as never) }
 }
+
+test('catalogue text follows the display language: read once per profile, en-US when unset or unknown', async () => {
+  let display = 'de-DE'
+  const { urls, auth, content } = fakeService((url) => (url.pathname === '/accounts/v1/me/profile' ? { preferred_communication_language: display } : {}))
+  const locales = (path: string) => urls.filter((url) => url.pathname.endsWith(path)).map((url) => url.searchParams.get('locale'))
+  await Promise.all([content.browse({}), content.search('one'), content.categories()])
+  assert.deepEqual([...locales('/discover/browse'), ...locales('/discover/search'), ...locales('/discover/categories')], ['de-DE', 'de-DE', 'de-DE'])
+  assert.equal(urls.filter((url) => url.pathname === '/accounts/v1/me/profile').length, 1)
+  display = 'xx-XX'
+  await content.setProfilePreferences({ displayLanguage: 'xx-XX' })
+  await content.browse({})
+  // Another profile reads its own, and a listing kept in one language is not served in another.
+  display = 'fr-FR'
+  auth.status = () => ({ authenticated: true, accountId: 'acct', profileId: 'p2' })
+  await content.browse({})
+  assert.deepEqual(locales('/discover/browse'), ['de-DE', 'en-US', 'fr-FR'])
+})
+
+test('after a display language switch the manifest reads the category titles again', async () => {
+  let display = 'en-US'
+  const { content, catalog } = fakeService((url) => (url.pathname === '/accounts/v1/me/profile' ? { preferred_communication_language: display } : {}))
+  let reads = 0
+  content.homeRows = async () => []
+  content.seasons = async () => []
+  content.categories = async () => { reads++; return [{ id: 'action', title: display === 'en-US' ? 'Action' : 'Acción' }] }
+  const genres = async () => ((await catalog.manifest()).catalogs as ManifestEntry[]).find((entry) => entry.id === 'cr-popular')?.extra?.find((item) => item.name === 'genre')?.options
+  await genres()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(await genres(), ['Action'])
+  display = 'es-ES'
+  await content.setProfilePreferences({ displayLanguage: 'es-ES' })
+  await genres()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(await genres(), ['Acción'])
+  assert.equal(reads, 2)
+})
+
+test("a series meta keeps every season in the preferred audio, numbered apart, with Crunchyroll's titles", async () => {
+  const versions = [{ audio_locale: 'ja-JP', guid: 'S1', original: true }, { audio_locale: 'en-US', guid: 'S1en' }]
+  const seasons = [
+    { id: 'S1', title: 'Part 1', season_number: 1, audio_locale: 'ja-JP', versions },
+    { id: 'S1en', title: 'Part 1 (English Dub)', season_number: 1, audio_locale: 'en-US', versions },
+    { id: 'S2', title: 'Part 2', season_number: 1, audio_locale: 'ja-JP' },
+  ]
+  const asked: string[] = []
+  const { urls, catalog } = fakeService((url) => (url.pathname === '/accounts/v1/me/profile'
+    ? { preferred_communication_language: 'fr-FR', preferred_content_audio_language: 'ja-JP' }
+    : url.pathname === '/content/v2/cms/objects/G1' ? { data: [{ id: 'G1', type: 'series', title: 'Un' }] } : {}), true, {
+    catalog: {
+      seasons: async (_id: string, locale: string) => { asked.push(`seasons ${locale}`); return seasons },
+      seasonEpisodes: async (id: string, audio: string, locale: string) => { asked.push(`${id} ${audio} ${locale}`); return [{ id: `${id}-E1`, guid: `${id}-E1`, number: 1 }] },
+    },
+  })
+  // No AniList lookup from a unit test.
+  ;(catalog as unknown as { trackIds: unknown }).trackIds = { get: async () => undefined }
+  const meta = await catalog.meta('cr:G1', 'http://127.0.0.1:1')
+  assert.deepEqual(meta?.izumi?.seasons, [{ number: 1, title: 'Part 1' }, { number: 2, title: 'Part 2' }])
+  assert.deepEqual(meta?.videos?.map((video) => [video.id, video.season, video.episode]), [['cr:S1-E1', 1, 1], ['cr:S2-E1', 2, 1]])
+  assert.deepEqual(asked, ['seasons fr-FR', 'S1 ja-JP fr-FR', 'S2 ja-JP fr-FR'])
+  assert.equal(urls.find((url) => url.pathname === '/content/v2/cms/objects/G1')?.searchParams.get('locale'), 'fr-FR')
+})
 
 test('the paged listings carry skip and a genre extra; the rest stay as they were', async () => {
   let release!: (value: unknown) => void
@@ -363,20 +465,26 @@ test('skip markers read in order, a missing start is the episode start, unusable
 
 /** A signed-in catalog whose fake CDN answers the skip-events file with `markers` (a status, a
  *  body, or a throw), beside a stub play session. */
-function streamService(markers: () => { status: number; body: unknown }) {
+function streamService(markers: () => { status: number; body: unknown }, subtitles = 'en-US') {
   const asked: Array<{ url: string; headers: Record<string, string> }> = []
   const transport: CrTransport = {
     name: 'fake',
     async request(req: CrRequest) {
-      asked.push({ url: req.url, headers: req.headers ?? {} })
-      const { status, body } = markers()
+      // The profile's preferences are answered aside: `asked` holds the CDN requests.
+      const profile = req.url.endsWith('/accounts/v1/me/profile')
+      if (!profile) asked.push({ url: req.url, headers: req.headers ?? {} })
+      const { status, body } = profile ? { status: 200, body: { preferred_content_subtitle_language: subtitles } } : markers()
       const text = JSON.stringify(body)
       return { status, url: req.url, headers: {}, body: Buffer.from(text), get text() { return text } }
     },
   }
   const auth = { profile: 'tv', accessToken: async () => 'token', status: () => ({ authenticated: true, accountId: 'acct' }) }
   const content = new Content(transport, auth as never)
-  const episodeServer = async () => ({ server: 'Crunchyroll', headers: { Referer: 'r' }, videoSources: [{ url: 'http://127.0.0.1:1/v/s/manifest.mpd' }] })
+  const episodeServer = async () => ({ server: 'Crunchyroll', headers: { Referer: 'r' }, videoSources: [{
+    url: 'http://127.0.0.1:1/v/s/manifest.mpd',
+    audio: 'sub',
+    subtitles: [{ url: 'en', language: 'en-US', kind: 'subtitles', isDefault: true }, { url: 'fr', language: 'fr-FR', kind: 'subtitles' }],
+  }] })
   return { asked, catalog: new StremioCatalog({ auth, content, episodeServer } as never) }
 }
 
@@ -408,6 +516,16 @@ test('an episode without markers, or a failed marker fetch, still gets its strea
     assert.equal(izumi.onlinestream, true)
     assert.equal('skip' in izumi, false)
   }
+})
+
+test('a stream defaults to the profile subtitle language, or keeps its own without one', async () => {
+  const defaults = async (language: string) => {
+    const [stream] = await streamService(() => ({ status: 404, body: {} }), language).catalog.stream('cr:E1', 'http://127.0.0.1:1')
+    return (stream!.subtitles as Array<{ url: string; isDefault?: boolean }>).filter((track) => track.isDefault).map((track) => track.url)
+  }
+  assert.deepEqual(await defaults('fr-FR'), ['fr'])
+  assert.deepEqual(await defaults(''), ['en'])
+  assert.deepEqual(await defaults('it-IT'), ['en'])
 })
 
 test('a failed marker fetch is asked again; a 404 is kept', async () => {
