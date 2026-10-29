@@ -513,6 +513,9 @@ async function handle(
       const id = source[1] ?? ''
       const session = app.session(id)
       if (session) await app.play.ensureLiveToken(session)
+      // The player asks for the manifest next: it is read now, while this answers, and that request
+      // joins the read (or finds it done).
+      if (session) void loadRewrittenManifest(app.play, session, remoteBase).catch(() => {})
       const mapped = app.sessionSource(
         id,
         'en-US',
