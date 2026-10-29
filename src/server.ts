@@ -203,6 +203,12 @@ async function handleStremio(app: CrunchyrollApp, req: IncomingMessage, res: Ser
   }
   const meta = path.match(/^meta\/(series|movie)\/([^/]+)\.json$/)
   if (req.method === 'GET' && meta) {
+    // Signed out, a title cannot be read: saying so (401) lets izumi ask for the sign-in rather than
+    // report the title as missing.
+    if (!app.auth.status().authenticated) {
+      send(res, 401, { error: 'Sign in to Crunchyroll to see this title.' })
+      return
+    }
     const found = await catalog.meta(decodeURIComponent(meta[2] ?? ''), app.baseUrl)
     send(res, found ? 200 : 404, found ? { meta: found } : { meta: null })
     return
