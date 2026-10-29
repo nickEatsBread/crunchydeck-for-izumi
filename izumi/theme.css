@@ -454,6 +454,19 @@
 [data-part="search.empty"] { padding: 0; border-radius: 0; background: transparent; color: rgb(255 255 255 / 0.4); font-size: calc(14 * var(--cd)); text-align: left; }
 [data-part="search.empty"][data-state="none"] { color: rgb(255 255 255 / 0.5); }
 
+/* ---- Home while it loads (Crunchy Deck's: an inset rounded banner over poster rows) ----------- */
+[data-slot="home.hero"][data-state="loading"] {
+  height: 42vh !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+  margin: calc(40 * var(--cd)) calc(40 * var(--cd)) calc(32 * var(--cd));
+  border-radius: calc(12 * var(--cd));
+}
+[data-part="row.pending"] { padding-inline: calc(40 * var(--cd)) !important; }
+[data-part="row.pending"][data-state="loading"] { margin-bottom: calc(32 * var(--cd)); }
+[data-part="row.pending"] [data-part="row.skeleton"] { width: calc(195 * var(--cd)) !important; border-radius: calc(12 * var(--cd)); }
+
 /* ---- Title page while it loads (Crunchy Deck's series skeleton) ------------------------------- */
 [data-part="detail.skeleton.banner"] { height: 58vh !important; }
 [data-part="detail.skeleton.copy"] { bottom: calc(32 * var(--cd)) !important; left: calc(40 * var(--cd)) !important; max-width: 55% !important; }
