@@ -465,15 +465,16 @@ test('skip markers read in order, a missing start is the episode start, unusable
 
 /** A signed-in catalog whose fake CDN answers the skip-events file with `markers` (a status, a
  *  body, or a throw), beside a stub play session. */
-function streamService(markers: () => { status: number; body: unknown }, subtitles = 'en-US') {
+function streamService(markers: () => { status: number; body: unknown }, subtitles = 'en-US', episode: unknown = { id: 'E1', episode_metadata: {} }) {
   const asked: Array<{ url: string; headers: Record<string, string> }> = []
   const transport: CrTransport = {
     name: 'fake',
     async request(req: CrRequest) {
-      // The profile's preferences are answered aside: `asked` holds the CDN requests.
+      // The profile's preferences and the episode's own object are answered aside: `asked` holds the CDN requests.
       const profile = req.url.endsWith('/accounts/v1/me/profile')
-      if (!profile) asked.push({ url: req.url, headers: req.headers ?? {} })
-      const { status, body } = profile ? { status: 200, body: { preferred_content_subtitle_language: subtitles } } : markers()
+      const object = req.url.includes('/content/v2/cms/objects/')
+      if (!profile && !object) asked.push({ url: req.url, headers: req.headers ?? {} })
+      const { status, body } = profile ? { status: 200, body: { preferred_content_subtitle_language: subtitles } } : object ? { status: 200, body: { data: [episode] } } : markers()
       const text = JSON.stringify(body)
       return { status, url: req.url, headers: {}, body: Buffer.from(text), get text() { return text } }
     },
@@ -493,6 +494,14 @@ test('opens the licence connection as soon as a stream is asked', async () => {
   const service = streamService(() => ({ status: 404, body: {} }))
   await service.catalog.stream('cr:E1', 'http://127.0.0.1:1')
   assert.equal(service.play.warmed, 1)
+})
+
+test('a stream carries its episode age rating and content descriptors, as Crunchy Deck shows them', async () => {
+  const episode = { id: 'E1', episode_metadata: { maturity_ratings: ['TV-14'], extended_maturity_rating: { rating: '14', system: 'BBFC' }, content_descriptors: ['Violence', ''] } }
+  const [stream] = await streamService(() => ({ status: 404, body: {} }), 'en-US', episode).catalog.stream('cr:E1', 'http://127.0.0.1:1')
+  assert.deepEqual((stream!.izumi as { rating?: unknown }).rating, { label: '14', descriptors: ['Violence'] })
+  const [plain] = await streamService(() => ({ status: 404, body: {} })).catalog.stream('cr:E1', 'http://127.0.0.1:1')
+  assert.equal('rating' in (plain!.izumi as Record<string, unknown>), false)
 })
 
 test('a stream carries its episode skip markers, read from the static CDN without a token', async () => {

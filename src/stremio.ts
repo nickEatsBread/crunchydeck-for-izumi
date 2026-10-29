@@ -79,6 +79,20 @@ export function ratingOf(meta: Pick<CrSeriesMetadata, 'maturity_ratings' | 'exte
   return /^\d+$/.test(value) ? `${value}+` : value
 }
 
+/** An episode's own age rating and content descriptors ("14", ["Violence"]), as Crunchy Deck shows them while
+ *  an episode starts. */
+export function episodeRating(panel: CrPanel | undefined): { label: string; descriptors?: string[] } | undefined {
+  const meta = panel?.episode_metadata ?? panel?.movie_metadata
+  const label = meta?.extended_maturity_rating?.rating ?? meta?.maturity_ratings?.[0]
+  if (!label) return undefined
+  const descriptors = (meta?.content_descriptors ?? []).filter((item): item is string => typeof item === 'string' && !!item.trim())
+  return { label: String(label), ...(descriptors.length ? { descriptors } : {}) }
+}
+
+/** `job`'s answer if it comes within `ms`, else undefined: what the stream can afford to wait for. */
+const within = <T>(job: Promise<T>, ms: number): Promise<T | undefined> =>
+  Promise.race([job.catch(() => undefined), new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), ms))])
+
 export function audioLabel(meta: { is_subbed?: boolean; is_dubbed?: boolean } | undefined): string | undefined {
   const parts = [meta?.is_subbed ? 'Sub' : '', meta?.is_dubbed ? 'Dub' : ''].filter(Boolean)
   return parts.length ? parts.join(' | ') : undefined
@@ -520,6 +534,8 @@ export class StremioCatalog {
     }
     const [upNext, inWatchlist] = await Promise.all([upNextP, watchlistP])
     const next = upNext && !upNext.fullyWatched ? upNext.panel : undefined
+    // Its play is likely next: its rating is read now, so the stream has it at once.
+    if (next) void this.app.content.object(next.id).catch(() => undefined)
     return {
       ...preview,
       videos,
@@ -546,10 +562,13 @@ export class StremioCatalog {
     // A play is coming: the licence server's connection opens while the stream is read.
     this.app.play.warmLicense()
     // The markers are asked beside the play session, so the stream waits on the slower of the two.
-    const [server, skip, subtitle] = await Promise.all([
+    // The episode's rating is read beside them (the series page read its up-next episode already), but
+    // the stream never waits long for it: izumi falls back to the series' rating.
+    const [server, skip, subtitle, rating] = await Promise.all([
       this.app.episodeServer(episodeId, DEFAULT_LOCALE, baseUrl),
       this.app.content.markers(episodeId),
       this.app.content.preferences().then((prefs) => prefs.subtitleLanguage, () => undefined),
+      within(this.app.content.object(episodeId).then(episodeRating), 150),
     ])
     return server.videoSources.map((source) => ({
       ...withSubtitle(source, subtitle),
@@ -561,6 +580,7 @@ export class StremioCatalog {
         headers: server.headers,
         progressUrl: `${baseUrl}/stremio/progress?video=${encodeURIComponent(id)}`,
         ...(skip.length ? { skip } : {}),
+        ...(rating ? { rating } : {}),
       },
     }))
   }

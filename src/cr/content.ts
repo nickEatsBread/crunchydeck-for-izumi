@@ -77,6 +77,8 @@ export interface CrEpisodeMetadata {
   is_dubbed?: boolean
   is_subbed?: boolean
   maturity_ratings?: string[]
+  extended_maturity_rating?: { rating?: string; system?: string }
+  content_descriptors?: string[]
 }
 
 export interface FeedRow {
