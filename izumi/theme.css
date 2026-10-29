@@ -319,6 +319,8 @@
 [data-part="detail.actions"] > :is([data-action="watchlist"], [data-action="more"]) { background: rgb(30 30 30 / 0.9); color: #fff; }
 [data-part="detail.actions"] > [data-action="more"] { width: calc(48 * var(--cd)); height: calc(48 * var(--cd)); padding: 0; }
 [data-part="detail.actions"] > [data-action="watchlist"] svg { color: inherit; }
+/* As tall as Continue: izumi gives the button a fixed height, Crunchy Deck pads both alike. */
+[data-part="detail.actions"] > [data-action="watchlist"] { height: auto; }
 [data-part="detail.actions"] > [data-action="play"]:is(:focus-visible), :scope:not(.gamemode) [data-part="detail.actions"] > [data-action="play"]:hover { outline: none; box-shadow: 0 0 0 calc(4 * var(--cd)) rgb(255 255 255 / 0.4); }
 [data-part="detail.actions"] > :is([data-action="watchlist"], [data-action="more"]):is(:focus-visible), :scope:not(.gamemode) [data-part="detail.actions"] > :is([data-action="watchlist"], [data-action="more"]):hover { outline: none; box-shadow: 0 0 0 calc(4 * var(--cd)) rgb(255 255 255 / 0.3); }
 
