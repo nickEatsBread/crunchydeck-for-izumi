@@ -389,6 +389,8 @@
 /* A template stack is laid out inline as a flex column filling the artwork: centre it both ways. */
 [data-part="cd-ep-hover"] { justify-content: center !important; align-items: center !important; background: rgb(0 0 0 / 0.35); opacity: 0; transition: opacity 150ms; }
 [data-part="episode"]:is(:focus-visible) [data-part="cd-ep-hover"], :scope:not(.gamemode) [data-part="episode"]:hover [data-part="cd-ep-hover"] { opacity: 1; }
+/* A finished episode's art is dimmed, as in Crunchy Deck. */
+[data-part="episode"][data-watched] [data-part="cd-ep-still"] { opacity: 0.5; }
 [data-part="cd-ep-play"], [data-part="cd-ep-replay"] { display: block; width: calc(48 * var(--cd)); height: calc(48 * var(--cd)); overflow: hidden; border-radius: 9999px; background: rgb(0 0 0 / 0.6) var(--cd-play-icon) center / calc(22 * var(--cd)) no-repeat; color: transparent; font-size: 0; }
 [data-part="cd-ep-replay"] { background-image: var(--cd-replay-icon); }
 /* Downloads: the status over the artwork's corner, progress along its bottom like the watch bar. */
@@ -500,6 +502,16 @@
   [data-part="detail.actions"] > [data-action], [data-part="detail.backdrop"]) { transition: none !important; }
 /* :is() cannot hold a pseudo-element, so the card's play icon needs its own rule. */
 :scope.gamemode [data-part="card"] > a [data-part="card.art"]::after { transition: none !important; }
+/* ...but focus still eases in, as Crunchy Deck's does: izumi writes --izumi-focus (0 to 1 over 150 ms) on the
+   focused card from script, with no transition and no compositor layer to drop. */
+:scope.gamemode [data-part="card"] > a {
+  transform: scale(calc(1 + 0.05 * var(--izumi-focus, 0)));
+  box-shadow: 0 0 0 3px rgb(244 117 33 / var(--izumi-focus, 0)), 0 14px 34px rgb(0 0 0 / calc(0.65 * var(--izumi-focus, 0))) !important;
+}
+:scope.gamemode [data-part="card"] > a [data-part="card.art"]::after { opacity: var(--izumi-focus, 0); }
+:scope.gamemode [data-part="episode"] [data-part="cd-ep-art"] { box-shadow: 0 0 0 2px rgb(244 117 33 / var(--izumi-focus, 0)); }
+:scope.gamemode [data-part="episode"] [data-part="cd-ep-still"] img { transform: scale(calc(1 + 0.05 * var(--izumi-focus, 0))); }
+:scope.gamemode [data-part="episode"] [data-part="cd-ep-hover"] { opacity: var(--izumi-focus, 0); }
 
 /* ---- Player ------------------------------------------------------------------------------- */
 /* Crunchy Deck's watch screen on izumi's desktop player. Game mode keeps izumi's own player: mpv draws
