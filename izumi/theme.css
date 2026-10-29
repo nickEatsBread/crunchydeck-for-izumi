@@ -423,6 +423,26 @@
 @media (min-width: 1536px) { :scope:not(.gamemode) :is([data-slot="search"] [data-part="search.grid"], [data-slot="browse"] [data-part="browse.grid"]) { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; } }
 :is([data-slot="search"] [data-part="search.grid"], [data-slot="browse"] [data-part="browse.grid"]) [data-part="card"] { width: 100% !important; }
 :is([data-slot="search"] [data-part="search.grid"], [data-slot="browse"] [data-part="browse.grid"]) [data-part="card"] [data-part="card.art"] { height: auto; aspect-ratio: 195 / 290 !important; }
+/* Browse's categories down the side: Crunchy Deck's menu rows (orange-tinted and ringed in orange when
+   focused, the chosen one in orange) instead of izumi's white focus ring. */
+[data-slot="browse"] [data-part="browse.category"] { border-radius: calc(10 * var(--cd)); }
+[data-slot="browse"] [data-part="browse.category"][data-state="active"] { background: transparent; color: var(--cd-brand); }
+[data-slot="browse"] [data-part="browse.category"]:is(:focus, :focus-visible), :scope:not(.gamemode) [data-slot="browse"] [data-part="browse.category"]:hover {
+  outline: none !important;
+  background: rgb(244 117 33 / 0.15);
+  color: #fff;
+  box-shadow: inset 0 0 0 1.5px var(--cd-brand) !important;
+}
+[data-slot="browse"] [data-part="browse.category"][data-state="active"]:is(:focus, :focus-visible) { color: var(--cd-brand); }
+/* Categories: Crunchy Deck's chip wall; the focused chip turns orange. */
+[data-slot="categories"] [data-part="categories.title"] { font-size: calc(24 * var(--cd)); }
+[data-slot="categories"] [data-part="categories.chip"] { background: rgb(30 30 30 / 0.9); color: rgb(255 255 255 / 0.85); padding: calc(10 * var(--cd)) calc(20 * var(--cd)); font-size: calc(14 * var(--cd)); }
+[data-slot="categories"] [data-part="categories.chip"]:is(:focus, :focus-visible), :scope:not(.gamemode) [data-slot="categories"] [data-part="categories.chip"]:hover {
+  outline: none !important;
+  background: var(--cd-brand);
+  color: #000;
+  box-shadow: 0 0 0 2px var(--cd-brand) !important;
+}
 [data-part="search.empty"] { padding: 0; border-radius: 0; background: transparent; color: rgb(255 255 255 / 0.4); font-size: calc(14 * var(--cd)); text-align: left; }
 [data-part="search.empty"][data-state="none"] { color: rgb(255 255 255 / 0.5); }
 
