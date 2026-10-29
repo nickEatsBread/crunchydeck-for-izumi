@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Content, feedRows, heroCards, panels, pickImage, skipMarkers } from '../src/cr/content.js'
 import type { CrRequest, CrTransport } from '../src/cr/http.js'
-import { audioLabel, categoryId, episodeLabel, FALLBACK_CATEGORIES, heroMeta, metaPreview, parseExtra, pickSeasons, ratingOf, StremioCatalog, stripPrefix, videoOf, withFacts, withResume } from '../src/stremio.js'
+import { audioLabel, categoryId, episodeLabel, FALLBACK_CATEGORIES, heroMeta, metaPreview, parseExtra, pickSeasons, ratingOf, seasonTitleOf, StremioCatalog, stripPrefix, videoOf, withFacts, withResume } from '../src/stremio.js'
 
 const images = (kind: string) => ({ [kind]: [[{ source: `https://img/${kind}/320`, width: 320 }, { source: `https://img/${kind}/640`, width: 640 }, { source: `https://img/${kind}/1920`, width: 1920 }]] })
 
@@ -137,7 +137,7 @@ test('a category title maps to its browse id: the live list, then the built-in o
 })
 
 /** A signed-in service over a fake Crunchyroll: answers by path, records every URL asked for. */
-function fakeService(answer: (url: URL) => unknown) {
+function fakeService(answer: (url: URL) => unknown, signedIn = true) {
   const urls: URL[] = []
   const transport: CrTransport = {
     name: 'fake',
@@ -148,7 +148,7 @@ function fakeService(answer: (url: URL) => unknown) {
       return { status: 200, url: req.url, headers: {}, body: Buffer.from(text), get text() { return text } }
     },
   }
-  const auth = { profile: 'tv', accessToken: async () => 'token', status: () => ({ authenticated: true, accountId: 'acct' }) }
+  const auth = { profile: 'tv', accessToken: async () => 'token', status: () => (signedIn ? { authenticated: true, accountId: 'acct' } : { authenticated: false }) }
   const content = new Content(transport, auth as never)
   return { urls, content, catalog: new StremioCatalog({ auth, content } as never) }
 }
@@ -161,8 +161,8 @@ test('the paged listings carry skip and a genre extra; the rest stay as they wer
   content.categories = () => pending as never
 
   // The first manifest does not wait for the category list: it lists the built-in one.
-  const first = (await catalog.manifest()).catalogs as Array<{ id: string; extra?: Array<{ name: string; isRequired?: boolean; options?: string[] }> }>
-  const paged = first.filter((entry) => entry.extra?.some((item) => item.name === 'skip'))
+  const first = (await catalog.manifest()).catalogs as Array<{ id: string; extra?: Array<{ name: string; isRequired?: boolean; options?: string[] }>; izumi?: { browse?: boolean } }>
+  const paged = first.filter((entry) => entry.izumi?.browse !== false && entry.extra?.some((item) => item.name === 'skip'))
   assert.deepEqual(paged.map((entry) => entry.id), ['cr-popular', 'cr-newest', 'cr-simulcast', 'cr-alphabetical'])
   for (const entry of paged) {
     assert.ok(!entry.extra!.some((item) => item.isRequired))
@@ -214,6 +214,134 @@ test('a listing narrowed to a category asks Crunchyroll browse for it, keeping t
   await new Promise((resolve) => setImmediate(resolve))
   await catalog.catalog('cr-newest', 'genre=Isekai')
   assert.deepEqual([browse().get('categories'), browse().get('sort_by')], ['isekai-id', 'newly_added'])
+})
+
+type ManifestEntry = { id: string; name: string; extra?: Array<{ name: string; options?: string[] }>; izumi?: Record<string, unknown> }
+const seasonOptions = (catalogs: unknown) => (catalogs as ManifestEntry[]).find((entry) => entry.id === 'cr-seasons')?.extra?.find((item) => item.name === 'season')?.options
+
+test('Watchlist, History and Simulcasts are drawer screens that page, off Home and Browse', async () => {
+  let release!: (value: unknown) => void
+  const pending = new Promise((resolve) => { release = resolve })
+  const { content, catalog } = fakeService(() => ({}))
+  content.homeRows = async () => []
+  content.seasons = () => pending as never
+
+  const first = (await catalog.manifest()).catalogs as ManifestEntry[]
+  assert.deepEqual(first.filter((entry) => entry.izumi?.menu).map((entry) => [entry.id, entry.name, entry.izumi]), [
+    ['cr-watchlist-all', 'Watchlist', { home: false, browse: false, menu: { label: 'Watchlist', icon: 'bookmark' } }],
+    ['cr-history-all', 'History', { home: false, browse: false, menu: { label: 'History', icon: 'history' } }],
+    ['cr-seasons', 'Simulcasts', { home: false, browse: false, menu: { label: 'Simulcasts', icon: 'calendar', extra: 'season' } }],
+  ])
+  for (const id of ['cr-watchlist-all', 'cr-history-all', 'cr-seasons']) assert.ok(first.find((entry) => entry.id === id)?.extra?.some((item) => item.name === 'skip'))
+  // The manifest does not wait for the season list: until it is read it offers today's season.
+  assert.deepEqual(seasonOptions(first), [seasonTitleOf(new Date())])
+
+  release(Array.from({ length: 20 }, (_, n) => ({ id: `tag-${n}`, title: `Season ${n}` })))
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(seasonOptions((await catalog.manifest()).catalogs), Array.from({ length: 16 }, (_, n) => `Season ${n}`))
+})
+
+test('a failed season read offers only the current season, and is tried again', async () => {
+  const { content, catalog } = fakeService(() => ({}))
+  let reads = 0
+  content.homeRows = async () => []
+  content.seasons = async () => { reads++; throw new Error('offline') }
+  assert.deepEqual(seasonOptions((await catalog.manifest()).catalogs), [seasonTitleOf(new Date())])
+  await new Promise((resolve) => setImmediate(resolve))
+  await catalog.manifest()
+  assert.equal(reads, 2)
+})
+
+test('a season title is the season a date falls in', () => {
+  assert.equal(seasonTitleOf(new Date(2027, 0, 5)), 'Winter 2027')
+  assert.equal(seasonTitleOf(new Date(2026, 3, 1)), 'Spring 2026')
+  assert.equal(seasonTitleOf(new Date(2026, 8, 30)), 'Summer 2026')
+  assert.equal(seasonTitleOf(new Date(2026, 9, 29)), 'Fall 2026')
+})
+
+test('a chosen season lists its shows by popularity under its tag; no season is the current one', async () => {
+  const { urls, catalog } = fakeService((url) => (url.pathname.endsWith('/seasonal_tags')
+    ? { data: [{ id: 'fall-2026', localization: { title: 'Fall 2026' } }, { id: 'summer-2026-tag', localization: { title: 'Summer 2026' } }] }
+    : { data: [{ id: 'G1', type: 'series', title: 'One' }] }))
+  const browse = () => urls.filter((url) => url.pathname.endsWith('/discover/browse')).at(-1)!.searchParams
+
+  // Before any manifest has read the list, the title still finds its tag.
+  const metas = await catalog.catalog('cr-seasons', 'season=Summer%202026&skip=24')
+  assert.deepEqual(metas.map((meta) => meta.id), ['cr:G1'])
+  assert.deepEqual([browse().get('seasonal_tag'), browse().get('sort_by'), browse().get('start')], ['summer-2026-tag', 'popularity', '24'])
+
+  await catalog.catalog('cr-seasons', undefined)
+  assert.deepEqual([browse().get('seasonal_tag'), browse().get('start')], ['fall-2026', '0'])
+
+  await catalog.manifest()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(seasonOptions((await catalog.manifest()).catalogs), ['Fall 2026', 'Summer 2026'])
+  await catalog.catalog('cr-seasons', 'season=summer%202026')
+  assert.equal(browse().get('seasonal_tag'), 'summer-2026-tag')
+  // A title the list does not hold falls back to its slug, the way Crunchyroll spells its tags.
+  await catalog.catalog('cr-seasons', 'season=Winter%202024')
+  assert.equal(browse().get('seasonal_tag'), 'winter-2024')
+})
+
+test('the watchlist pages through Crunchyroll\'s, the latest added first', async () => {
+  const { urls, catalog } = fakeService(() => ({ data: [
+    { panel: { id: 'E1', type: 'episode', episode_metadata: { series_id: 'G1', series_title: 'One', season_number: 1, episode_number: 3 } } },
+    { panel: { id: 'G2', type: 'series', title: 'Two' } },
+  ] }))
+  const metas = await catalog.catalog('cr-watchlist-all', undefined)
+  assert.deepEqual(metas.map((meta) => [meta.id, meta.name]), [['cr:G1', 'One'], ['cr:G2', 'Two']])
+  await catalog.catalog('cr-watchlist-all', 'skip=100')
+  assert.deepEqual(
+    urls.filter((url) => url.pathname === '/content/v2/discover/acct/watchlist')
+      .map((url) => ['start', 'n', 'sort_by', 'order'].map((key) => url.searchParams.get(key))),
+    [['0', '100', 'date_added', 'desc'], ['100', '100', 'date_added', 'desc']],
+  )
+})
+
+test('history lists each series once, the latest first, a Crunchyroll page per request', async () => {
+  const episode = (id: string, series: string) => ({ playhead: 10, panel: { id, type: 'episode', episode_metadata: { series_id: series, series_title: series } } })
+  const pages: Record<string, unknown[]> = {
+    1: [episode('E1', 'G1'), episode('E2', 'G1'), episode('E3', 'G2')],
+    2: [episode('E4', 'G2'), episode('E5', 'G3')],
+    3: [episode('E6', 'G1')],
+  }
+  const { urls, catalog } = fakeService((url) => ({ data: pages[url.searchParams.get('page')!] ?? [] }))
+  const asked = () => urls.filter((url) => url.pathname === '/content/v2/acct/watch-history').map((url) => url.searchParams.get('page'))
+  const ids = async (extra?: string) => (await catalog.catalog('cr-history-all', extra)).map((meta) => meta.id)
+
+  assert.deepEqual(await ids(), ['cr:G1', 'cr:G2'])
+  assert.deepEqual(await ids('skip=2'), ['cr:G3'])
+  // A page of series already listed comes again rather than empty, so the list goes on.
+  assert.deepEqual(await ids('skip=3'), ['cr:G1'])
+  assert.deepEqual(await ids('skip=4'), [])
+  assert.deepEqual(asked(), ['1', '2', '3', '4'])
+  assert.equal(urls.find((url) => url.pathname.endsWith('/watch-history'))!.searchParams.get('page_size'), '100')
+  // A skip this session never handed out asks nothing; skip 0 starts over.
+  assert.deepEqual(await ids('skip=7'), [])
+  assert.equal(asked().length, 4)
+  assert.deepEqual(await ids(), ['cr:G1', 'cr:G2'])
+})
+
+test('a playhead report forgets the history, so it follows what was just watched', async () => {
+  let latest = 'G1'
+  const { urls, content, catalog } = fakeService((url) => (url.pathname.endsWith('/watch-history')
+    ? { data: [{ panel: { id: `E-${latest}`, type: 'episode', episode_metadata: { series_id: latest } } }] }
+    : {}))
+  assert.deepEqual((await catalog.catalog('cr-history-all', undefined)).map((meta) => meta.id), ['cr:G1'])
+  latest = 'G2'
+  assert.deepEqual((await catalog.catalog('cr-history-all', undefined)).map((meta) => meta.id), ['cr:G1'])
+  await content.setPlayhead('E-G2', 30)
+  assert.deepEqual((await catalog.catalog('cr-history-all', undefined)).map((meta) => meta.id), ['cr:G2'])
+  assert.equal(urls.filter((url) => url.pathname.endsWith('/watch-history')).length, 2)
+})
+
+test('signed out, the drawer listings are empty and ask Crunchyroll nothing', async () => {
+  const { urls, catalog } = fakeService(() => ({ data: [{ id: 'G1', type: 'series', title: 'One' }] }), false)
+  for (const id of ['cr-watchlist-all', 'cr-history-all', 'cr-seasons']) {
+    assert.deepEqual(await catalog.catalog(id, undefined), [])
+    assert.deepEqual(await catalog.catalog(id, 'skip=24&season=Fall%202026'), [])
+  }
+  assert.equal(urls.length, 0)
 })
 
 test('skip markers read in order, a missing start is the episode start, unusable blocks are left out', () => {

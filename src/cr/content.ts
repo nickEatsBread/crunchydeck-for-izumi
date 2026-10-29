@@ -95,6 +95,12 @@ export interface HeroCard {
   logoImage?: string
 }
 
+/** A simulcast season: the id goes to `browse?seasonal_tag=`, the title is what the viewer sees. */
+export interface CrSeason {
+  id: string
+  title: string
+}
+
 export interface CrCategory {
   id: string
   title: string
@@ -335,7 +341,8 @@ export class Content {
     return simulcasts.map((item) => ({ contentId: item.id, title: item.title ?? '', description: item.description }))
   }
 
-  async browse(opts: { sort?: 'popularity' | 'newly_added' | 'alphabetical'; seasonal?: boolean; start?: number; n?: number; categories?: string }): Promise<CrPanel[]> {
+  /** `seasonalTag` narrows to that season; `seasonal` alone to the current one. */
+  async browse(opts: { sort?: 'popularity' | 'newly_added' | 'alphabetical'; seasonal?: boolean; seasonalTag?: string; start?: number; n?: number; categories?: string }): Promise<CrPanel[]> {
     const params = new URLSearchParams({
       n: String(opts.n ?? 24),
       start: String(opts.start ?? 0),
@@ -344,10 +351,8 @@ export class Content {
       locale: DEFAULT_LOCALE,
     })
     if (opts.categories) params.set('categories', opts.categories)
-    if (opts.seasonal) {
-      const tag = await this.currentSeason()
-      if (tag) params.set('seasonal_tag', tag)
-    }
+    const tag = opts.seasonalTag ?? (opts.seasonal ? await this.currentSeason() : undefined)
+    if (tag) params.set('seasonal_tag', tag)
     const json = await this.request<{ data?: unknown[] }>(`/content/v2/discover/browse?${params}`, { ttlMs: 10 * 60_000 })
     return panels(json?.data)
   }
@@ -365,9 +370,21 @@ export class Content {
     })
   }
 
+  /** The simulcast seasons, newest first, as Crunchy Deck's Seasons screen reads them. The first
+   *  is the current one. */
+  async seasons(): Promise<CrSeason[]> {
+    const json = await this.request<{ data?: Array<{ id?: unknown; title?: unknown; localization?: { title?: unknown } }> }>(
+      `/content/v2/discover/seasonal_tags?locale=${DEFAULT_LOCALE}`,
+      { ttlMs: 60 * 60_000 },
+    )
+    return (json?.data ?? []).flatMap((row) => {
+      const title = row?.localization?.title ?? row?.title ?? row?.id
+      return typeof row?.id === 'string' && row.id && typeof title === 'string' ? [{ id: row.id, title }] : []
+    })
+  }
+
   async currentSeason(): Promise<string | undefined> {
-    const json = await this.request<{ data?: Array<{ id?: string }> }>(`/content/v2/discover/seasonal_tags?locale=${DEFAULT_LOCALE}`, { ttlMs: 60 * 60_000 })
-    return json?.data?.[0]?.id
+    return (await this.seasons())[0]?.id
   }
 
   async search(query: string): Promise<CrPanel[]> {
@@ -474,9 +491,20 @@ export class Content {
     }
   }
 
-  async watchlist(): Promise<CrPanel[]> {
+  /** The watchlist from `start`, the latest added first. */
+  async watchlist(start = 0, n = 100): Promise<CrPanel[]> {
     const json = await this.request<{ data?: unknown[] }>(
-      `/content/v2/discover/${this.account()}/watchlist?order=desc&n=100&start=0&sort_by=date_added&locale=${DEFAULT_LOCALE}`,
+      `/content/v2/discover/${this.account()}/watchlist?order=desc&n=${n}&start=${start}&sort_by=date_added&locale=${DEFAULT_LOCALE}`,
+      { ttlMs: 60_000 },
+    )
+    return panels(json?.data)
+  }
+
+  /** A page (from 1) of the episodes the profile played, the latest first. Kept a minute at most:
+   *  a playhead report forgets it, so it follows what was just watched. */
+  async history(page: number, size = 100): Promise<CrPanel[]> {
+    const json = await this.request<{ data?: unknown[] }>(
+      `/content/v2/${this.account()}/watch-history?page_size=${size}&page=${page}&locale=${DEFAULT_LOCALE}`,
       { ttlMs: 60_000 },
     )
     return panels(json?.data)

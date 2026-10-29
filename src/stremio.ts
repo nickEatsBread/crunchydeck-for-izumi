@@ -5,7 +5,7 @@
 // progress.
 import type { CrunchyrollApp } from './app.js'
 import { CRUNCHYROLL_ICON } from './brand.js'
-import { curationUrl, pickImage, type CrCategory, type CrPanel, type CrSeriesMetadata, type HeroCard } from './cr/content.js'
+import { curationUrl, pickImage, type CrCategory, type CrPanel, type CrSeason, type CrSeriesMetadata, type HeroCard } from './cr/content.js'
 import type { EpisodeItem, SeasonItem } from './cr/catalog.js'
 import { DEFAULT_LOCALE } from './cr/constants.js'
 import { anilistGraphQl, politeGraphQl, TrackIdService, type TrackIds } from './cr/anime-ids.js'
@@ -62,7 +62,11 @@ export interface CatalogEntry {
   id: string
   name: string
   extra?: Array<{ name: string; isRequired?: boolean; options?: string[]; izumi?: { images?: Record<string, string> } }>
-  izumi?: { hero?: true; continue?: true; home?: boolean; homeFilters?: boolean }
+  izumi?: {
+    hero?: true; continue?: true; home?: boolean; homeFilters?: boolean; browse?: boolean
+    /** Lists the catalog in izumi's drawer as its own screen; `extra` opens it on that extra's options. */
+    menu?: { label: string; icon?: 'bookmark' | 'history' | 'calendar' | 'list'; extra?: string }
+  }
 }
 
 /** "TV-14" → "14+", "16" → "16+"; the locale-correct extended rating wins (as Crunchy Deck shows it). */
@@ -225,12 +229,13 @@ export function stripPrefix(id: string): string | undefined {
 }
 
 /** `skip=24&search=one%20piece&genre=Action` → {skip: 24, search: "one piece", genre: "Action"}. */
-export function parseExtra(extra: string | undefined): { skip: number; search?: string; genre?: string } {
+export function parseExtra(extra: string | undefined): { skip: number; search?: string; genre?: string; season?: string } {
   const params = new URLSearchParams(extra ?? '')
   const skip = Number(params.get('skip') ?? 0)
   const search = params.get('search') ?? undefined
   const genre = params.get('genre') ?? undefined
-  return { skip: Number.isFinite(skip) && skip > 0 ? Math.floor(skip) : 0, ...(search ? { search } : {}), ...(genre ? { genre } : {}) }
+  const season = params.get('season') ?? undefined
+  return { skip: Number.isFinite(skip) && skip > 0 ? Math.floor(skip) : 0, ...(search ? { search } : {}), ...(genre ? { genre } : {}), ...(season ? { season } : {}) }
 }
 
 /** Crunchyroll's categories as its Categories screen lists them, for the manifest while (or when)
@@ -253,11 +258,28 @@ export const FALLBACK_CATEGORIES: CrCategory[] = [
   { id: 'thriller', title: 'Thriller' },
 ]
 
+/** The id of an option title a client sent back (a `genre`, a `season`): the listed one's, else its slug. */
+export function optionId(title: string, options: Array<{ id: string; title: string }>): string {
+  const key = title.trim().toLowerCase()
+  return options.find((option) => option.title.toLowerCase() === key)?.id ?? key.replace(/\s+/g, '-')
+}
+
 /** The `categories=` id of the category title a client sent back as `genre`. */
 export function categoryId(title: string, categories: CrCategory[]): string {
-  const key = title.trim().toLowerCase()
-  return [...categories, ...FALLBACK_CATEGORIES].find((category) => category.title.toLowerCase() === key)?.id ?? key.replace(/\s+/g, '-')
+  return optionId(title, [...categories, ...FALLBACK_CATEGORIES])
 }
+
+/** The season a date falls in, titled as Crunchyroll titles it ("Fall 2026"): the manifest's only
+ *  season while (or when) the live list cannot be read. Its slug is the season's tag. */
+export function seasonTitleOf(date: Date): string {
+  return `${['Winter', 'Spring', 'Summer', 'Fall'][Math.floor(date.getMonth() / 3)]} ${date.getFullYear()}`
+}
+
+/** The most seasons izumi's Simulcasts screen offers. */
+const SEASON_OPTIONS = 16
+
+/** Crunchyroll episodes a History page reads. */
+const HISTORY_PAGE = 100
 
 /** The listings that page (`skip`) and narrow to a category (`genre`): izumi's Browse sorts. */
 const PAGED: Record<string, { name: string; sort: 'popularity' | 'newly_added' | 'alphabetical'; seasonal?: boolean }> = {
@@ -284,6 +306,11 @@ export class StremioCatalog {
   private trackIds?: TrackIdService
   private categories?: CrCategory[]
   private categoriesJob?: Promise<void>
+  private seasons?: CrSeason[]
+  private seasonsJob?: Promise<void>
+  /** History pages by Crunchyroll page while a client pages by titles shown (`skip`): the page that
+   *  follows each skip handed out, and the series listed so far. A skip of 0 starts it over. */
+  private history?: { next: Map<number, number>; seen: Set<string> }
   constructor(private app: CrunchyrollApp) {}
 
   private signedIn(): boolean {
@@ -299,9 +326,36 @@ export class StremioCatalog {
     )
   }
 
+  /** The simulcast seasons, read the same way: once a run, never waited for. */
+  private loadSeasons(): void {
+    this.seasonsJob ??= this.app.content.seasons().then(
+      (list) => { if (list.length) this.seasons = list; else this.seasonsJob = undefined },
+      () => { this.seasonsJob = undefined },
+    )
+  }
+
+  /** One Crunchyroll page of the history, as the series not listed yet this session, latest first. */
+  private async historyPage(skip: number): Promise<StremioMeta[]> {
+    if (!skip) this.history = { next: new Map([[0, 1]]), seen: new Set() }
+    const session = this.history
+    const page = session?.next.get(skip)
+    if (!session || !page) return []
+    const metas = collect(await this.app.content.history(page, HISTORY_PAGE))
+    const fresh = metas.filter((meta) => !session.seen.has(meta.id))
+    // A page of series already listed is sent again, since an empty one would end the list; izumi
+    // drops titles it already shows and reads on.
+    const out = fresh.length ? fresh : metas
+    for (const meta of out) session.seen.add(meta.id)
+    if (out.length) session.next.set(skip + out.length, page + 1)
+    return out
+  }
+
   async manifest(): Promise<Record<string, unknown>> {
     const signedIn = this.signedIn()
-    if (signedIn) this.loadCategories()
+    if (signedIn) {
+      this.loadCategories()
+      this.loadSeasons()
+    }
     const feed = signedIn ? await this.app.content.homeRows().catch(() => []) : []
     const categories = this.categories ?? FALLBACK_CATEGORIES
     const images = Object.fromEntries(categories.flatMap((category) => (category.image ? [[category.title, category.image]] : [])))
@@ -317,6 +371,16 @@ export class StremioCatalog {
       })),
       // The categories are for Browse: izumi offers no Home row per category, and A–Z stays off Home.
       ...Object.entries(PAGED).map(([id, row]) => ({ type: 'series' as const, id, name: row.name, extra: [{ name: 'skip' }, genre], izumi: { homeFilters: false, ...(id === 'cr-alphabetical' ? { home: false } : {}) } })),
+      // Drawer screens, as Crunchy Deck has them: izumi pages them, and they stay off Home and Browse.
+      { type: 'series', id: 'cr-watchlist-all', name: 'Watchlist', extra: [{ name: 'skip' }], izumi: { home: false, browse: false, menu: { label: 'Watchlist', icon: 'bookmark' } } },
+      { type: 'series', id: 'cr-history-all', name: 'History', extra: [{ name: 'skip' }], izumi: { home: false, browse: false, menu: { label: 'History', icon: 'history' } } },
+      {
+        type: 'series',
+        id: 'cr-seasons',
+        name: 'Simulcasts',
+        extra: [{ name: 'skip' }, { name: 'season', options: this.seasons?.slice(0, SEASON_OPTIONS).map((season) => season.title) ?? [seasonTitleOf(new Date())] }],
+        izumi: { home: false, browse: false, menu: { label: 'Simulcasts', icon: 'calendar', extra: 'season' } },
+      },
       { type: 'series', id: 'cr-search', name: 'Search', extra: [{ name: 'search', isRequired: true }] },
     ]
     return {
@@ -335,7 +399,7 @@ export class StremioCatalog {
 
   async catalog(id: string, extra: string | undefined): Promise<StremioMeta[]> {
     if (!this.signedIn()) return []
-    const { skip, search, genre } = parseExtra(extra)
+    const { skip, search, genre, season } = parseExtra(extra)
     const content = this.app.content
     if (id === 'cr-hero') {
       const cards = await content.hero()
@@ -346,6 +410,12 @@ export class StremioCatalog {
       return cards.map((card, index) => withResume(withFacts(heroMeta(card), objects.get(card.contentId)), next[index]))
     }
     if (id === 'cr-search') return search ? collect(await content.search(search)) : []
+    if (id === 'cr-watchlist-all') return collect(await content.watchlist(skip))
+    if (id === 'cr-history-all') return this.historyPage(skip)
+    if (id === 'cr-seasons') {
+      const seasonalTag = season ? optionId(season, this.seasons ?? await content.seasons().catch(() => [])) : undefined
+      return collect(await content.browse({ sort: 'popularity', seasonal: true, seasonalTag, start: skip, n: 24 }))
+    }
     const paged = PAGED[id]
     if (paged) {
       const categories = genre ? categoryId(genre, this.categories ?? []) : undefined
