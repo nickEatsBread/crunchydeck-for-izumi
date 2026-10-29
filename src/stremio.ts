@@ -359,6 +359,10 @@ export class StremioCatalog {
     // What needs only the id starts at once: the page waits on the slowest call, not on their sum.
     const upNextP = content.upNext(contentId).catch(() => undefined)
     const watchlistP = content.inWatchlist(contentId).catch(() => undefined)
+    // A series' seasons need only the id too: asked beside the object rather than after it (one
+    // Crunchyroll round trip less). For a film the answer goes unused.
+    const seasonsP = this.app.catalog.seasons(contentId)
+    seasonsP.catch(() => {})
     const [object, audio] = await Promise.all([content.object(contentId), content.preferredAudio()])
     if (!object) return undefined
     const preview = metaPreview(object)
@@ -366,7 +370,7 @@ export class StremioCatalog {
     const videos: StremioVideo[] = []
     const episodes: Array<{ episode: EpisodeItem & { number: number; guid: string }; season?: number }> = []
     if (object.type === 'series') {
-      const seasons = pickSeasons(await this.app.catalog.seasons(contentId), audio)
+      const seasons = pickSeasons(await seasonsP, audio)
       const lists = await Promise.all(seasons.map((season) => this.app.catalog.seasonEpisodes(season.id, audio)))
       seasons.forEach((season, index) => {
         for (const episode of lists[index] ?? []) episodes.push({ episode, season: season.season_number })
