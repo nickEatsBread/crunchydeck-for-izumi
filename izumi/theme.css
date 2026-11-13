@@ -329,10 +329,14 @@
 [data-slot="detail.section"][data-section="overview"] { display: none; }
 [data-slot="detail.section"][data-section="episodes"] > [data-part="detail.section-title"] { display: none; }
 [data-slot="detail.episodes"] { margin-top: 0; padding: calc(12 * var(--cd)) calc(40 * var(--cd)) calc(64 * var(--cd)); }
-[data-slot="episodes.toolbar"] { margin-bottom: calc(24 * var(--cd)); }
+[data-slot="episodes.toolbar"] { gap: calc(8 * var(--cd)); margin-bottom: calc(24 * var(--cd)); }
 [data-part="episodes.heading"] { display: none; }
 [data-slot="episodes.seasons"] { gap: calc(8 * var(--cd)); margin: 0; padding: 0; flex-wrap: wrap; overflow: visible; }
-[data-part="season"] {
+/* Controls under the season pills sit like a second line of pills (Crunchy Deck's flex-wrap gap-2). */
+[data-slot="episodes.seasons"] + [data-slot="episodes.toolbar"] { margin-top: calc(8 * var(--cd)); }
+/* Crunchy Deck's pill: its season pills, and its sort pills (Browse page, the same classes), which
+   Oldest | Newest copies; the round search and download buttons are pills of the same height. */
+:is([data-part="season"], [data-part="episodes.sort"] > button, [data-slot="episodes.toolbar"] button:is([data-part="episodes.search"], [data-part="episodes.download"])) {
   padding: calc(6 * var(--cd)) calc(16 * var(--cd));
   border: 0;
   border-radius: 9999px;
@@ -340,12 +344,17 @@
   color: rgb(255 255 255 / 0.8);
   font-size: calc(14 * var(--cd));
   font-weight: 600;
+  line-height: calc(20 * var(--cd));
   transition: box-shadow 150ms;
 }
-[data-part="season"][data-active] { background: var(--cd-brand); color: #000; }
-[data-part="season.label"] { font-size: inherit; font-weight: inherit; }
+:is([data-part="season"], [data-part="episodes.sort"] > button, [data-slot="episodes.toolbar"] button[data-part="episodes.search"])[data-active] { background: var(--cd-brand); color: #000; }
+[data-part="season.label"] { font-size: inherit; font-weight: inherit; line-height: inherit; }
 [data-part="season.year"] { display: none; }
-[data-part="season"]:is(:focus-visible), :scope:not(.gamemode) [data-part="season"]:hover { outline: none; box-shadow: 0 0 0 2px var(--cd-brand); }
+:is([data-part="season"], [data-part="episodes.sort"] > button, [data-slot="episodes.toolbar"] button:is([data-part="episodes.search"], [data-part="episodes.download"])):is(:focus-visible),
+:scope:not(.gamemode) :is([data-part="season"], [data-part="episodes.sort"] > button, [data-slot="episodes.toolbar"] button:is([data-part="episodes.search"], [data-part="episodes.download"])):hover { outline: none; box-shadow: 0 0 0 2px var(--cd-brand); }
+[data-part="episodes.sort"][data-variant="tabs"] { height: auto; gap: calc(8 * var(--cd)); padding: 0; border-radius: 0; background: transparent; }
+[data-slot="episodes.toolbar"] button:is([data-part="episodes.search"], [data-part="episodes.download"]) { width: calc(32 * var(--cd)); height: calc(32 * var(--cd)); padding: 0; }
+[data-slot="episodes.toolbar"] button:is([data-part="episodes.search"], [data-part="episodes.download"]) svg { width: calc(16 * var(--cd)); height: calc(16 * var(--cd)); }
 /* Crunchy Deck's grid-cols-2 md:grid-cols-3 xl:grid-cols-4: three across on the Deck, four on a wide window. */
 [data-slot="detail.episodes"] [data-part="episodes.grid"] {
   grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
@@ -407,7 +416,8 @@
 [data-slot="search"][data-variant="catalog"] { padding: calc(32 * var(--cd)) calc(40 * var(--cd)) !important; }
 [data-slot="search"] [data-part="search.filter"] { display: none !important; }
 [data-slot="search"] [data-part="search.filters"] { margin-bottom: calc(16 * var(--cd)); }
-[data-slot="search"] [data-part="search.field"] {
+/* The episode search field, once opened, is Crunchy Deck's search field too. */
+:is([data-slot="search"] [data-part="search.field"], [data-part="episodes.search"] > [data-part="input"]) {
   max-width: calc(576 * var(--cd));
   height: auto;
   padding-top: calc(12 * var(--cd));
@@ -419,7 +429,8 @@
   outline: none;
   box-shadow: 0 0 0 2px transparent;
 }
-[data-slot="search"] [data-part="search.field"]:is(:focus, :focus-visible), :scope:not(.gamemode) [data-slot="search"] [data-part="search.field"]:hover { box-shadow: 0 0 0 2px var(--cd-brand); }
+:is([data-slot="search"] [data-part="search.field"], [data-part="episodes.search"] > [data-part="input"]):is(:focus, :focus-visible),
+:scope:not(.gamemode) :is([data-slot="search"] [data-part="search.field"], [data-part="episodes.search"] > [data-part="input"]):hover { box-shadow: 0 0 0 2px var(--cd-brand); }
 /* Crunchy Deck's poster grid: three across on the Deck, five and six on wide windows, each poster
    filling its column (the fixed row-card width overlapped the narrower columns). */
 :is([data-slot="search"] [data-part="search.grid"], [data-slot="browse"] [data-part="browse.grid"], [data-slot="listing"] [data-part="listing.grid"]) { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: calc(28 * var(--cd)) calc(20 * var(--cd)) !important; }
@@ -498,7 +509,8 @@
 :scope.gamemode :is([data-slot="nav.drawer"] [data-part="nav.item"], [data-slot="nav.drawer"] [data-part="nav.item.icon"],
   [data-part="nav.drawer.foot"] [data-part="nav.action"], [data-part="cd-hero-art"] img, [data-part="cd-play"], [data-part="cd-details"],
   [data-slot="home.hero"] [data-part="hero.dot.track"], [data-slot="home.hero"] [data-part="hero.edge"], [data-part="card"] > a,
-  [data-part="season"], [data-part="cd-ep-art"], [data-part="cd-ep-still"] img, [data-part="cd-ep-hover"],
+  [data-part="season"], [data-part="episodes.sort"] > button, [data-slot="episodes.toolbar"] button:is([data-part="episodes.search"], [data-part="episodes.download"]),
+  [data-part="cd-ep-art"], [data-part="cd-ep-still"] img, [data-part="cd-ep-hover"],
   [data-part="detail.actions"] > [data-action], [data-part="detail.backdrop"]) { transition: none !important; }
 /* :is() cannot hold a pseudo-element, so the card's play icon needs its own rule. */
 :scope.gamemode [data-part="card"] > a [data-part="card.art"]::after { transition: none !important; }
