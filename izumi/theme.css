@@ -601,6 +601,18 @@
 }
 [data-slot="player.controls"][data-variant="desktop"] [data-control="play"] { width: calc(48 * var(--cd)); height: calc(48 * var(--cd)); color: #fff; transition: background-color 150ms, color 150ms; }
 [data-slot="player.controls"][data-variant="desktop"] [data-control="play"] svg { width: calc(24 * var(--cd)); height: calc(24 * var(--cd)); }
+/* Audio and Subtitles as words (player.trackButtons "text") are Crunchy Deck's text buttons, sized to
+   the word: 12px across, 8px down, 14px semibold, 6px corners. The 44px circle cut "Subtitles" off. */
+[data-slot="player.controls"][data-variant="desktop"] [data-part="player.control"]:is([data-control="audio"], [data-control="subtitles"]) {
+  width: auto;
+  height: auto;
+  padding: calc(8 * var(--cd)) calc(12 * var(--cd));
+  border-radius: calc(6 * var(--cd));
+  font-size: calc(14 * var(--cd));
+  line-height: calc(20 * var(--cd));
+  font-weight: 600;
+  white-space: nowrap;
+}
 [data-slot="player.controls"][data-variant="desktop"] [data-part="player.control"]:hover { background: rgb(255 255 255 / 0.2); }
 /* Focus (keyboard, or a controller outside Game mode) fills any button orange with a black glyph, as
    Crunchy Deck's Play and Back and Game mode's own buttons do; Play and Back fill on hover too. */
