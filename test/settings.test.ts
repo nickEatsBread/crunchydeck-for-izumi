@@ -200,14 +200,41 @@ test('a signed-in account shows its membership and edits the profile languages a
   assert.equal(document.values.audioLanguage, 'ja-JP')
   assert.equal(document.values.matureContent, false)
   const subtitles = document.fields.find((field) => field.key === 'subtitleLanguage')
-  assert.equal(subtitles?.options?.[0]?.label, 'None')
+  assert.equal(subtitles?.options?.some((option) => option.value === ''), false)
+  const unset = serviceSettings(account, [], { ...details, preferences: { ...details.preferences, subtitleLanguage: '' } })
+  assert.deepEqual(unset.fields.find((field) => field.key === 'subtitleLanguage')?.options?.[0], { value: '', label: 'Not set' })
   assert.deepEqual(subtitles?.visibleWhen, { key: 'accountAction', equals: 'preferences' })
 
   let saved: unknown
   account.savePreferences = async (patch) => { saved = patch }
   const after = await saveServiceSettings(account, { accountAction: 'preferences', displayLanguage: 'fr-FR', audioLanguage: 'ja-JP', subtitleLanguage: '', matureContent: true }, undefined, async () => details)
-  assert.deepEqual(saved, { displayLanguage: 'fr-FR', audioLanguage: 'ja-JP', subtitleLanguage: '', matureContent: true })
+  // An unset subtitle language is left alone: Crunchyroll refuses an empty one.
+  assert.deepEqual(saved, { displayLanguage: 'fr-FR', audioLanguage: 'ja-JP', matureContent: true })
   assert.equal(after.message, 'Preferences saved to Crunchyroll.')
+})
+
+test("the profile languages are izumi's Language section, saved without an account action", async () => {
+  const account = new FakeAccount()
+  assert.equal(serviceSettings(account).languages, undefined)
+  await account.loginPassword('me@example.com', 'secret')
+  const details = { premium: true, preferences: { displayLanguage: 'en-US', audioLanguage: 'ja-JP', subtitleLanguage: 'en-US', matureContent: false } }
+  const document = serviceSettings(account, [], details)
+  assert.deepEqual(document.languages, { audio: 'audioLanguage', subtitle: 'subtitleLanguage' })
+  assert.deepEqual(document.fields.filter((field) => field.section === 'languages').map((field) => field.key), ['displayLanguage', 'audioLanguage', 'subtitleLanguage'])
+
+  let saved: unknown
+  account.savePreferences = async (patch) => { saved = patch }
+  const after = await saveServiceSettings(account, { subtitleLanguage: 'de-DE' }, undefined, async () => details)
+  // Just the field izumi sent: the others keep whatever the profile has.
+  assert.deepEqual(saved, { subtitleLanguage: 'de-DE' })
+  assert.equal(after.message, 'Preferences saved to Crunchyroll.')
+  // An unchanged mature content setting is not sent: Crunchyroll wants a password for any maturity write.
+  await saveServiceSettings(account, { accountAction: 'preferences', audioLanguage: 'ja-JP', matureContent: false }, undefined, async () => details)
+  assert.deepEqual(saved, { audioLanguage: 'ja-JP' })
+  // A save with neither an action nor a language still changes nothing.
+  saved = undefined
+  assert.equal((await saveServiceSettings(account, {})).message, 'No account changes were made.')
+  assert.equal(saved, undefined)
 })
 
 test('membership comes from the access token benefits', async () => {
