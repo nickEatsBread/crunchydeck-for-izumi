@@ -1,0 +1,61 @@
+{
+  "app": "izumi",
+  "kind": "store",
+  "schemaVersion": 1,
+  "id": "crunchy-deck",
+  "name": "CrunchyDeck for izumi",
+  "description": "The Crunchyroll source for izumi and its matching theme, inspired by Crunchy Deck.",
+  "homepage": "https://github.com/nickEatsBread/crunchydeck-for-izumi",
+  "icon": "https://raw.githubusercontent.com/nickEatsBread/crunchydeck-for-izumi/main/izumi/icon.svg",
+  "entries": [
+    {
+      "kind": "source",
+      "sourceType": "package",
+      "backend": "izumi-service",
+      "id": "crunchyroll.izumi",
+      "name": "Crunchyroll",
+      "version": "0.1.4",
+      "description": "Your Crunchyroll account as an izumi source: search, episodes, dubs and subtitles. Needs a Crunchyroll account.",
+      "icon": "https://raw.githubusercontent.com/nickEatsBread/crunchydeck-for-izumi/main/izumi/icon.svg",
+      "homepage": "https://github.com/nickEatsBread/crunchydeck-for-izumi",
+      "languages": [
+        "en"
+      ],
+      "content": [
+        "anime"
+      ],
+      "builds": {
+        "linux-x86_64": {
+          "url": "https://github.com/nickEatsBread/crunchydeck-for-izumi/releases/download/v0.1.4/crunchyroll-linux-x86_64.izumi-ext",
+          "sha256": "574381723e33cf3bcb068966bb81de8dc6ea020eca4a5a75c4a7d8dd26f8984c",
+          "bytes": 52564434
+        },
+        "windows-x86_64": {
+          "url": "https://github.com/nickEatsBread/crunchydeck-for-izumi/releases/download/v0.1.4/crunchyroll-windows-x86_64.izumi-ext",
+          "sha256": "59f228169d07cc69716029b9fa40f96a6a27de1130d5ee52977209b533c55ba0",
+          "bytes": 55494581
+        }
+      }
+    },
+    {
+      "kind": "theme",
+      "id": "crunchy-deck",
+      "name": "Crunchy Deck",
+      "version": "2.0.17",
+      "author": "nickEatsBread",
+      "description": "Inspired by Crunchy Deck's look: Crunchyroll orange on near-black, a slide-in menu instead of a top bar or rail, a tall featured banner with the title logo, Sub | Dub and the age rating, cards with their titles on the artwork, and season pills over an episode grid.",
+      "themeApi": 7,
+      "tags": [
+        "Dark",
+        "Drawer"
+      ],
+      "platforms": [
+        "desktop",
+        "phone"
+      ],
+      "url": "https://raw.githubusercontent.com/nickEatsBread/crunchydeck-for-izumi/main/izumi/theme.json",
+      "sha256": "c05cf468eef2cf388b5a1634915aeee86ccf6966f72bbf58ea0877663be3936c",
+      "bytes": 61072
+    }
+  ]
+}
