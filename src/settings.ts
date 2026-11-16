@@ -36,7 +36,7 @@ export interface ServiceSettingField {
   placeholder?: string
   options?: ServiceSettingOption[]
   /** 'languages': izumi also shows the field in its own Settings › Languages, under this source's
-   *  catalog, and saves it there by posting only that section's fields (no `accountAction`). */
+   *  catalog, and saves a change there by posting just that field (no `accountAction`). */
   section?: 'languages'
 }
 
@@ -62,7 +62,7 @@ export interface ServiceSettingsDocument {
   fields: ServiceSettingField[]
   values: Record<string, ServiceSettingValue>
   /** The fields holding the profile's audio and subtitle languages: izumi plays this catalog in them.
-   *  An empty subtitle value is None (subtitles off), as in Crunchy Deck. */
+   *  An empty value is a language the profile never set. */
   languages?: { audio: string; subtitle: string }
 }
 
@@ -232,7 +232,9 @@ export function serviceSettings(
       ...(prefs ? [
         { key: 'displayLanguage', label: 'Display language', description: 'Titles, descriptions and row names.', type: 'select' as const, ...shown, options: languageOptions(DISPLAY_LANGUAGES, prefs.displayLanguage) },
         { key: 'audioLanguage', label: 'Audio language', description: 'The dub an episode starts in when it has one.', type: 'select' as const, ...shown, options: languageOptions(AUDIO_LANGUAGES, prefs.audioLanguage) },
-        { key: 'subtitleLanguage', label: 'Subtitle language', type: 'select' as const, ...shown, options: languageOptions(SUBTITLE_LANGUAGES, prefs.subtitleLanguage, [{ value: '', label: 'None' }]) },
+        // Crunchyroll stores no "off" and refuses an empty language, so there is no None: a profile
+        // that never chose one shows Not set, which izumi reads as no preference.
+        { key: 'subtitleLanguage', label: 'Subtitle language', type: 'select' as const, ...shown, options: languageOptions(SUBTITLE_LANGUAGES, prefs.subtitleLanguage, prefs.subtitleLanguage ? [] : [{ value: '', label: 'Not set' }]) },
         { key: 'matureContent', label: 'Mature content', description: 'Show titles rated for adults on this profile.', type: 'boolean' as const, visibleWhen: shown.visibleWhen },
       ] : []),
       {
@@ -312,7 +314,7 @@ export async function saveServiceSettings(
     const [list, read] = await Promise.all([profiles().catch(() => undefined), details().catch(() => undefined)])
     return result(account, message, list, read)
   }
-  // izumi saves its Language section on its own: only those fields, no action.
+  // izumi saves a Language section field on its own: just that field, no action.
   const languagesOnly = LANGUAGE_KEYS.some((key) => typeof values[key] === 'string')
   switch (value(values, 'accountAction') || (languagesOnly ? 'preferences' : 'keep')) {
     case 'keep':
@@ -320,10 +322,16 @@ export async function saveServiceSettings(
     case 'preferences': {
       if (!account.savePreferences) throw new Error('This account cannot change its preferences.')
       const patch: Partial<ProfilePreferences> = {}
+      // An empty language is one the profile never set: Crunchyroll refuses to store it, so leave it.
       for (const key of LANGUAGE_KEYS) {
-        if (typeof values[key] === 'string') patch[key] = value(values, key)
+        if (value(values, key)) patch[key] = value(values, key)
       }
-      if (typeof values.matureContent === 'boolean') patch.matureContent = values.matureContent
+      // Crunchyroll asks for the password and an email code before any maturity write, even an
+      // unchanged one: send it only when it changed, or every language save from this sheet fails.
+      if (typeof values.matureContent === 'boolean') {
+        const current = (await details().catch(() => undefined))?.preferences.matureContent
+        if (values.matureContent !== current) patch.matureContent = values.matureContent
+      }
       await account.savePreferences(patch)
       return after('Preferences saved to Crunchyroll.')
     }
