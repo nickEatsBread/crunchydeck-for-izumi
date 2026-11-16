@@ -35,6 +35,9 @@ export interface ServiceSettingField {
   required?: boolean
   placeholder?: string
   options?: ServiceSettingOption[]
+  /** 'languages': izumi also shows the field in its own Settings › Languages, under this source's
+   *  catalog, and saves it there by posting only that section's fields (no `accountAction`). */
+  section?: 'languages'
 }
 
 export interface ServiceSettingsNotice {
@@ -58,6 +61,9 @@ export interface ServiceSettingsDocument {
   complete?: boolean
   fields: ServiceSettingField[]
   values: Record<string, ServiceSettingValue>
+  /** The fields holding the profile's audio and subtitle languages: izumi plays this catalog in them.
+   *  An empty subtitle value is None (subtitles off), as in Crunchy Deck. */
+  languages?: { audio: string; subtitle: string }
 }
 
 export interface ServiceSettingsResult extends ServiceSettingsDocument {
@@ -191,7 +197,8 @@ export function serviceSettings(
   details?: AccountDetails,
 ): ServiceSettingsDocument {
   const prefs = details?.preferences
-  const shown = { visibleWhen: { key: 'accountAction', equals: 'preferences' } }
+  // In this sheet under Preferences; in izumi's Settings › Languages as this catalog's Language section.
+  const shown = { visibleWhen: { key: 'accountAction', equals: 'preferences' }, section: 'languages' as const }
   const status = account.status()
   const flow = account.deviceStatus()
   const current = profiles.find((profile) => profile.selected)
@@ -213,6 +220,7 @@ export function serviceSettings(
       : flowNotice(flow),
     refreshAfterMs: flow.status === 'waiting' ? 1_000 : undefined,
     complete: status.authenticated && !choosing && flow.status !== 'waiting',
+    ...(status.authenticated ? { languages: { audio: 'audioLanguage', subtitle: 'subtitleLanguage' } } : {}),
     fields: [
       {
         key: 'accountAction',
@@ -225,7 +233,7 @@ export function serviceSettings(
         { key: 'displayLanguage', label: 'Display language', description: 'Titles, descriptions and row names.', type: 'select' as const, ...shown, options: languageOptions(DISPLAY_LANGUAGES, prefs.displayLanguage) },
         { key: 'audioLanguage', label: 'Audio language', description: 'The dub an episode starts in when it has one.', type: 'select' as const, ...shown, options: languageOptions(AUDIO_LANGUAGES, prefs.audioLanguage) },
         { key: 'subtitleLanguage', label: 'Subtitle language', type: 'select' as const, ...shown, options: languageOptions(SUBTITLE_LANGUAGES, prefs.subtitleLanguage, [{ value: '', label: 'None' }]) },
-        { key: 'matureContent', label: 'Mature content', description: 'Show titles rated for adults on this profile.', type: 'boolean' as const, ...shown },
+        { key: 'matureContent', label: 'Mature content', description: 'Show titles rated for adults on this profile.', type: 'boolean' as const, visibleWhen: shown.visibleWhen },
       ] : []),
       {
         key: 'profileId',
@@ -277,6 +285,8 @@ export function serviceSettings(
   }
 }
 
+const LANGUAGE_KEYS = ['displayLanguage', 'audioLanguage', 'subtitleLanguage'] as const
+
 function rawValue(values: Record<string, unknown>, key: string): string {
   const candidate = values[key]
   return typeof candidate === 'string' ? candidate : ''
@@ -302,13 +312,15 @@ export async function saveServiceSettings(
     const [list, read] = await Promise.all([profiles().catch(() => undefined), details().catch(() => undefined)])
     return result(account, message, list, read)
   }
-  switch (value(values, 'accountAction') || 'keep') {
+  // izumi saves its Language section on its own: only those fields, no action.
+  const languagesOnly = LANGUAGE_KEYS.some((key) => typeof values[key] === 'string')
+  switch (value(values, 'accountAction') || (languagesOnly ? 'preferences' : 'keep')) {
     case 'keep':
       return after('No account changes were made.')
     case 'preferences': {
       if (!account.savePreferences) throw new Error('This account cannot change its preferences.')
       const patch: Partial<ProfilePreferences> = {}
-      for (const key of ['displayLanguage', 'audioLanguage', 'subtitleLanguage'] as const) {
+      for (const key of LANGUAGE_KEYS) {
         if (typeof values[key] === 'string') patch[key] = value(values, key)
       }
       if (typeof values.matureContent === 'boolean') patch.matureContent = values.matureContent

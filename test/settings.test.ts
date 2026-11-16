@@ -210,6 +210,26 @@ test('a signed-in account shows its membership and edits the profile languages a
   assert.equal(after.message, 'Preferences saved to Crunchyroll.')
 })
 
+test("the profile languages are izumi's Language section, saved without an account action", async () => {
+  const account = new FakeAccount()
+  assert.equal(serviceSettings(account).languages, undefined)
+  await account.loginPassword('me@example.com', 'secret')
+  const details = { premium: true, preferences: { displayLanguage: 'en-US', audioLanguage: 'ja-JP', subtitleLanguage: 'en-US', matureContent: false } }
+  const document = serviceSettings(account, [], details)
+  assert.deepEqual(document.languages, { audio: 'audioLanguage', subtitle: 'subtitleLanguage' })
+  assert.deepEqual(document.fields.filter((field) => field.section === 'languages').map((field) => field.key), ['displayLanguage', 'audioLanguage', 'subtitleLanguage'])
+
+  let saved: unknown
+  account.savePreferences = async (patch) => { saved = patch }
+  const after = await saveServiceSettings(account, { displayLanguage: 'en-US', audioLanguage: 'en-US', subtitleLanguage: '' }, undefined, async () => details)
+  assert.deepEqual(saved, { displayLanguage: 'en-US', audioLanguage: 'en-US', subtitleLanguage: '' })
+  assert.equal(after.message, 'Preferences saved to Crunchyroll.')
+  // A save with neither an action nor a language still changes nothing.
+  saved = undefined
+  assert.equal((await saveServiceSettings(account, {})).message, 'No account changes were made.')
+  assert.equal(saved, undefined)
+})
+
 test('membership comes from the access token benefits', async () => {
   const { premiumFromToken } = await import('../src/cr/content.js')
   const token = (claims: object) => `x.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.y`
