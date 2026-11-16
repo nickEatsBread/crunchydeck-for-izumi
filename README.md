@@ -2,7 +2,7 @@
 
 Watch Crunchyroll in [izumi](https://github.com/nickEatsBread/izumi) with your own Crunchyroll account.
 
-## What you get
+## Features
 
 - Your Crunchyroll account as an izumi source: search, episodes, dubs and subtitles
 - The CrunchyDeck theme
