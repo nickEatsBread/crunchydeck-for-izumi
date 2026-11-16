@@ -11,6 +11,7 @@ import { mediaCacheKey, mediaGateway, nextSegmentUrl, type FetchedMedia } from '
 import { DEFAULT_PORT } from './cr/constants.js'
 import { loadOrCreateShareToken } from './storage.js'
 import { CRUNCHYROLL_ICON } from './brand.js'
+import { fontContentType, isSubtitleFont, subtitleFont } from './cr/fonts.js'
 import { saveServiceSettings, serviceSettings } from './settings.js'
 import { localAccess } from './access.js'
 import { StremioCatalog } from './stremio.js'
@@ -552,6 +553,29 @@ async function handle(
         console.log(`[http] offline manifest heights=${heights.join(',') || 'none'} max=${maxHeight ?? 'auto'}`)
       }
       send(res, 200, rewritten.body, rewritten.contentType)
+      return
+    }
+    const font = url.pathname.match(/^\/v\/([^/]+)\/fonts\/([^/]+)$/)
+    if (req.method === 'GET' && font) {
+      const file = decodeURIComponent(font[2] ?? '')
+      if (!app.session(font[1] ?? '') || !isSubtitleFont(file)) {
+        send(res, 404, { error: 'unknown font' })
+        return
+      }
+      let body: Buffer
+      try {
+        body = await subtitleFont(file)
+      } catch (error) {
+        send(res, 502, { error: error instanceof Error ? error.message : String(error) })
+        return
+      }
+      res.writeHead(200, {
+        'content-type': fontContentType(file),
+        'content-length': String(body.length),
+        // The same file under every session: a player may keep it.
+        'cache-control': 'public, max-age=31536000, immutable',
+      })
+      res.end(body)
       return
     }
     const asset = url.pathname.match(/^\/v\/([^/]+)\/asset$/)

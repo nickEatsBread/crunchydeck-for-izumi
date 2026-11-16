@@ -5,6 +5,7 @@ Watch Crunchyroll in [izumi](https://github.com/nickEatsBread/izumi) with your o
 ## Features
 
 - Your Crunchyroll account as an izumi source: search, episodes, dubs and subtitles
+- Subtitles styled as on Crunchyroll, with Crunchyroll's subtitle fonts (each downloaded once and kept on your device)
 - The CrunchyDeck theme
 - The Crunchyroll intro when izumi starts
 - Protected playback on Linux and the Steam Deck

@@ -4,6 +4,7 @@ import { Content, type AccountDetails, type ProfilePreferences } from './cr/cont
 import { tryChromeTransport } from './cr/chrome.js'
 import { FetchTransport, type CrTransport } from './cr/http.js'
 import { PlayService, type PlaySession } from './cr/play.js'
+import { subtitleFonts } from './cr/fonts.js'
 import { initialPlaybackUrl } from './cr/proxy.js'
 import { loadSession } from './storage.js'
 import type { ClientProfile } from './cr/constants.js'
@@ -29,6 +30,8 @@ export interface VideoSource {
     switchUrl?: string
   }>
   previewUrl?: string
+  /** Fonts the ASS subtitles are written for, by family (see cr/fonts.ts). */
+  subtitleFonts?: Array<{ family: string; url: string }>
   drm?: {
     keySystem: string
     licenseUrl: string
@@ -239,6 +242,9 @@ export class CrunchyrollApp {
       audioTracks: audioTracks.length ? audioTracks : undefined,
       previewUrl: session.previewUrl
         ? `${baseUrl}/v/${session.id}/asset?u=${encodeURIComponent(session.previewUrl)}`
+        : undefined,
+      subtitleFonts: session.subtitles.some((track) => track.format === 'ass' || /\.ass(\?|$)/i.test(track.url))
+        ? subtitleFonts(`${baseUrl}/v/${session.id}`)
         : undefined,
       drm,
     }
