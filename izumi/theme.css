@@ -531,6 +531,12 @@
    its controls, Skip button, Up Next card and media menu (data-theme-unthemed), so nothing below
    reaches Game mode. The controls rules name the desktop variant: the Android player's hooks share
    these names with a different layout. */
+/* Crunchy Deck's big, calm loading ring from the press to the picture: 84 screen px with a 4.5 px stroke
+   (a 56 px ring with a 3 px border at its 1.5 zoom). Game mode's native ring follows the same two. */
+:scope {
+  --theme-player-spinner-size: 84px;
+  --theme-player-spinner-stroke: 4.5px;
+}
 :scope {
   --cd-skip-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%272.5%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27m6%2017%205-5-5-5%27%2F%3E%3Cpath%20d%3D%27m13%2017%205-5-5-5%27%2F%3E%3C%2Fsvg%3E");
 }
