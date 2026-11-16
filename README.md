@@ -1,7 +1,6 @@
 # CrunchyDeck for izumi
 
-Watch Crunchyroll in [izumi](https://github.com/nickEatsBread/izumi) with your own Crunchyroll
-account, with a theme and start-up intro inspired by Crunchy Deck.
+Watch Crunchyroll in [izumi](https://github.com/nickEatsBread/izumi) with your own Crunchyroll account.
 
 ## What you get
 
