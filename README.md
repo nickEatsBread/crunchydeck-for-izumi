@@ -1,4 +1,6 @@
-# Crunchyroll source for Izumi
+# CrunchyDeck for izumi
+
+The Crunchyroll source for izumi, with a theme and start-up intro inspired by Crunchy Deck.
 
 A **separate** Crunchyroll source that Izumi loads as a normal
 `onlinestream-provider` extension. It does **not** patch Izumi.
@@ -31,7 +33,7 @@ This source copies that model:
   Chromium page (HTTP/2 + HTTP/3). Otherwise it falls back to Node HTTP/2 with
   the same headers. Force a stack with `CR_HTTP=chrome` or `CR_HTTP=fetch`.
 
-## Set up izumi with the Crunchy Deck pack
+## Set up izumi with the CrunchyDeck for izumi pack
 
 The easiest way in. One link sets izumi up for Crunchyroll: it installs this source and the Crunchy
 Deck theme, plays the Crunchyroll intro when izumi starts, and asks you to sign in. On Linux and the
@@ -50,7 +52,7 @@ Crunchyroll's protected video there. Windows plays protected video without it.
   izumi installs, and the next time it opens it shows the pack for you to set up.
 
 izumi shows everything the pack adds before anything is installed. Nothing happens until you choose
-**Set up with Crunchy Deck**.
+**Set up with CrunchyDeck for izumi**.
 
 > **Google's Widevine licence.** By setting up this pack on Linux (including the Steam Deck), you
 > accept the licence that Google ships with its Widevine content decryption module. izumi then
