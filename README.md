@@ -5,6 +5,7 @@ Watch Crunchyroll in [izumi](https://github.com/nickEatsBread/izumi) with your o
 ## Features
 
 - Your Crunchyroll account as an izumi source: search, episodes, dubs and subtitles
+- Subtitles styled as on Crunchyroll, with Crunchyroll's subtitle fonts (each downloaded once and kept on your device)
 - Your profile's audio and subtitle languages, shared with izumi both ways: izumi plays Crunchyroll in
   them, and changing them in izumi (Settings → Languages) saves them to your profile (needs izumi with
   per-catalog languages)
