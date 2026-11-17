@@ -4,12 +4,12 @@
   "schemaVersion": 1,
   "id": "crunchy-deck",
   "name": "CrunchyDeck for izumi",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "author": "nickEatsBread",
   "description": "Watch Crunchyroll in izumi: your Crunchyroll account as a source, a Crunchyroll-orange look, the Crunchyroll intro at start-up, and protected playback on Linux and the Steam Deck. Needs a Crunchyroll account. Inspired by Crunchy Deck.",
   "icon": "https://raw.githubusercontent.com/nickEatsBread/crunchydeck-for-izumi/main/izumi/icon.svg",
   "homepage": "https://github.com/nickEatsBread/crunchydeck-for-izumi",
-  "minAppVersion": "0.1.75",
+  "minAppVersion": "0.1.77",
   "stores": [
     {
       "url": "https://raw.githubusercontent.com/nickEatsBread/crunchydeck-for-izumi/main/izumi/store.json"

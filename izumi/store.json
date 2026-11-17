@@ -14,7 +14,7 @@
       "backend": "izumi-service",
       "id": "crunchyroll.izumi",
       "name": "Crunchyroll",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "description": "Your Crunchyroll account as an izumi source: search, episodes, dubs and subtitles. Needs a Crunchyroll account.",
       "icon": "https://raw.githubusercontent.com/nickEatsBread/crunchydeck-for-izumi/main/izumi/icon.svg",
       "homepage": "https://github.com/nickEatsBread/crunchydeck-for-izumi",
@@ -26,14 +26,14 @@
       ],
       "builds": {
         "linux-x86_64": {
-          "url": "https://github.com/nickEatsBread/crunchydeck-for-izumi/releases/download/v0.1.4/crunchyroll-linux-x86_64.izumi-ext",
-          "sha256": "574381723e33cf3bcb068966bb81de8dc6ea020eca4a5a75c4a7d8dd26f8984c",
-          "bytes": 52564434
+          "url": "https://github.com/nickEatsBread/crunchydeck-for-izumi/releases/download/v0.1.5/crunchyroll-linux-x86_64.izumi-ext",
+          "sha256": "a8df7bb4f080e77617f6d09068beeb707eb4fcdbe8e4109379f3b8670357bf60",
+          "bytes": 52566270
         },
         "windows-x86_64": {
-          "url": "https://github.com/nickEatsBread/crunchydeck-for-izumi/releases/download/v0.1.4/crunchyroll-windows-x86_64.izumi-ext",
-          "sha256": "59f228169d07cc69716029b9fa40f96a6a27de1130d5ee52977209b533c55ba0",
-          "bytes": 55494581
+          "url": "https://github.com/nickEatsBread/crunchydeck-for-izumi/releases/download/v0.1.5/crunchyroll-windows-x86_64.izumi-ext",
+          "sha256": "18bf6eb91955554a495326aa3790ec562978446c0d7102b2ae2d0b1987dd4adb",
+          "bytes": 55496225
         }
       }
     },
