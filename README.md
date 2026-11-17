@@ -78,3 +78,7 @@ Push a `v<version>` tag that matches `package.json`. CI builds and signs the pac
 ## Not affiliated
 
 Not affiliated with or endorsed by Crunchyroll, LLC or Sony. You need your own Crunchyroll account.
+
+## Licence
+
+[GPL-3.0-or-later](LICENSE).
