@@ -626,8 +626,10 @@
   box-shadow: none;
 }
 [data-slot="player.controls"][data-variant="desktop"] [data-part="player.volume"] { accent-color: var(--cd-brand); }
-/* Options and audio/subtitles menus: Crunchy Deck's 256px panel in surface-1/95 with a white/10 ring;
-   rows lift to white/15, and the focused row gets the house orange edge (options.item). */
+/* Options, audio/subtitles and right-click menus: Crunchy Deck's 256px panel in surface-1/95 with a
+   white/10 ring; rows lift to white/15, and the focused row gets the house orange edge (options.item).
+   Rows are Crunchy Deck's 40px (py-2.5 around a 20px line) with 16px sides and close once chosen: theme.json
+   player.menu (Theme API 9). */
 [data-slot="player.controls"][data-variant="desktop"] [data-part="player.menu"] {
   width: calc(256 * var(--cd));
   border: 0;
@@ -645,6 +647,8 @@
   color: #fff;
   box-shadow: inset calc(4 * var(--cd)) 0 0 var(--cd-brand);
 }
+/* The chosen option is bold in Crunchy Deck orange, focused or not (font-bold text-brand). */
+[data-slot="player.controls"][data-variant="desktop"] [data-part="player.menu"] [data-part="player.menu.item"][data-state="active"] { color: var(--cd-brand); font-weight: 700; }
 /* Skip: Crunchy Deck's white pill with a double chevron, orange with a white/40 ring when chosen. */
 button[data-part="player.skip"] {
   border: 0;
