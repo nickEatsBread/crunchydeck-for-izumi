@@ -93,7 +93,7 @@ const pack = {
   description: 'Watch Crunchyroll in izumi: your Crunchyroll account as a source, a Crunchyroll-orange look, the Crunchyroll intro at start-up, and protected playback on Linux and the Steam Deck. Needs a Crunchyroll account. Inspired by Crunchy Deck.',
   icon: `${raw}/icon.svg`,
   homepage: `https://github.com/${repo}`,
-  minAppVersion: '0.1.75',
+  minAppVersion: '0.1.77',
   stores: [{ url: `${raw}/store.json` }],
   items: [
     // The source's own catalog becomes a screen, and izumi opens on it.

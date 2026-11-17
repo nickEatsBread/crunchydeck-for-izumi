@@ -17,7 +17,7 @@ You need a Crunchyroll account, and a premium plan for premium titles.
 
 ## Install
 
-You need [izumi 0.1.75 or newer](https://github.com/nickEatsBread/izumi/releases/latest).
+You need [izumi 0.1.77 or newer](https://github.com/nickEatsBread/izumi/releases/latest).
 
 1. Copy the [pack link](https://raw.githubusercontent.com/nickEatsBread/crunchydeck-for-izumi/main/izumi/pack.json)
    (right-click it, then **Copy link**). It's the link izumi sets everything up from.
